@@ -1,18 +1,6 @@
 # BoltzFT reproduction — head-FT virtual screening
 
-Reproducing **Furui & Ohue, _Adapting Boltz-2 with limited experimental activity data
-improves early enrichment in virtual screening_** (arXiv:2609.24302), the **head
-fine-tuning** result (Table 2 / Fig 2), on the Savio cluster.
-
-This is a **reproduction of the authors' released pipeline** [`ohuelab/BoltzFT`](https://github.com/ohuelab/BoltzFT)
-(which drives a patched fork of [`molecularinformatics/Boltz2_affinity`](https://github.com/molecularinformatics/Boltz2_affinity)),
-adapted to this cluster's SLURM/conda — **not** a from-scratch reimplementation.
-
-## What is in this repository
-
-Code, SLURM scripts, notebooks (executed, with outputs) and local patches. **Not included:** the data (`data/`), run outputs (`results/`), model weights/cache (`boltz_cache/`), logs, and the two upstream clones. To rebuild the environment, clone
-[`ohuelab/BoltzFT`](https://github.com/ohuelab/BoltzFT) at `c7d5616` and [`molecularinformatics/Boltz2_affinity`](https://github.com/molecularinformatics/Boltz2_affinity) at `bc06a0b` into this directory, apply `patches/*.patch` (our local changes on top of the authors' own
-`BoltzFT/patches/boltz2_affinity.patch`), and see `env.sh` and the pipeline section below. Cluster paths in the scripts (`/global/scratch/users/sergiomar10/boltzaff`, SLURM account, `savio_lowprio`) are specific to the Savio system where this was run.
+Reproduction of Furui & Ohue, [_Adapting Boltz-2 with limited experimental activity data improves early enrichment in virtual screening_](https://arxiv.org/abs/2609.24302) (arXiv:2609.24302), head fine-tuning result (Table 2 / Fig 2), on the Savio cluster, using the authors' released pipeline [`ohuelab/BoltzFT`](https://github.com/ohuelab/BoltzFT).
 
 ## Findings (status 2026-09-30: 2 of 8 targets finished, 588689 and 504329)
 
