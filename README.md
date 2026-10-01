@@ -13,7 +13,8 @@ statistic is meaningful yet: read each finding as "holds for these two" until th
 - 588689: No-FT 0.097 (paper 0.096), head-FT 0.207 +/- 0.015, x2.12 (paper x2.46).
 - 504329: No-FT 0.051 (paper 0.047), head-FT 0.174 +/- 0.021, x3.42 (paper x4.76).
 - The dataset's shipped No-FT scores reproduce the paper's No-FT values on all 8 targets (same eval-set size and active count, AP within 0.005). That checks the evaluation, not our own Boltz-2 runs.
-- Notebooks: `01_replication`, `00_overview`.
+- Balanced training (588689 only, right panel; held-out compounds ranked below 1000, n = 48,985, 302 actives, so No-FT, top-N and balanced are scored on the same compounds): No-FT 0.058, head-FT top-N 0.155 +/- 0.021 (x2.66), head-FT balanced 0.195 +/- 0.007 (x3.35). Balanced is x1.27 over top-N (paired p = 0.028, uncorrected) and its seeds agree about three times more tightly (SD 0.007 against 0.021).
+- Notebooks: `01_replication`, `00_overview`, `06_training_strategies`.
 
 ![Replication](notebooks/figures/finding_1_replication.png)
 
@@ -21,6 +22,7 @@ statistic is meaningful yet: read each finding as "holds for these two" until th
 - 497 compounds flagged per target. Confusion matrices below (rows: truth; columns: flagged or not).
 - 588689: 125 actives found against 67 for No-FT (recall 32% against 17%), 372 false positives against 430.
 - 504329: 138 actives against 43 (recall 32% against 10%), 359 false positives against 454.
+- Balanced training (588689 held-out set, 490 compounds flagged): No-FT 45 actives (recall 15%), top-N 94 (31%), balanced 100 (33%); false positives 445, 396 and 390. At the top 1% balanced is almost the same as top-N (+6 actives, no interval computed), so its AP advantage does not come from the very top of the ranking.
 - At the default p > 0.5 threshold head-FT looks conservative (588689: flags 200 compounds against 2,062). That is a threshold effect from its lower probabilities, not a worse ranking.
 - Notebook: `03_ft_vs_noft_reranking`.
 
@@ -32,6 +34,7 @@ statistic is meaningful yet: read each finding as "holds for these two" until th
 - Inactives show almost no such trend (Spearman 0.07-0.12, against 0.31-0.53 for actives).
 - On 588689 the net top-1% change hides 704 compounds changing status: 76 actives promoted, 18 lost, 334 false positives removed, 276 created. The new false positives include inactive members of the same families.
 - A no-training baseline (rank by Tanimoto to the nearest training active) reaches AP 0.166 on 588689, against 0.207 for head-FT.
+- The balanced model shows the same dependence (588689 held-out set, median rank gain below 0.3: x1.0; 0.3-0.5: x2.7; above 0.5: x10.8; top-N: x1.2, x2.7, x10.6), even though its training set holds 150 actives instead of 90. Balancing does not remove the reliance on analogs of the training actives.
 - Reading: head-FT behaves like generalisation to analogs of the 300 labels, not like a model that has learned binding in general. Correlational, two targets; 504329 has only 28 training actives.
 - Figure: three example actives per bin (closest to each bin's median rank gain, not cherry-picked), with Tanimoto and rank gain.
 - Notebook: `03_ft_vs_noft_reranking`.
@@ -44,6 +47,7 @@ statistic is meaningful yet: read each finding as "holds for these two" until th
 - Most twins get almost the same score (537 of 737 pairs are ties): a fine-tuned model moves a whole series up together.
 - Right calls go with a larger, greasier active (median +23 Da, +0.47 logP); wrong calls with a smaller, less lipophilic one (-9 Da, -0.31 logP).
 - In pairs matched on size and logP (58 pairs) head-FT is at chance (0.47). Models are still right more often than wrong where the active is neither larger nor greasier (No-FT 28 against 11), so size is not the whole story.
+- Balanced training does not improve this (588689 cliff pairs inside the held-out set, 358 pairs, 60 series): the active is above its twin in 67% of pairs for No-FT, 66% for top-N and 64% for balanced, with 95% intervals over series of about +/-0.07, so no difference can be claimed.
 - Notebook: `04_structural_cliffs`.
 
 ![Near-identical pairs](notebooks/figures/finding_4_pairs.png)
@@ -53,6 +57,7 @@ statistic is meaningful yet: read each finding as "holds for these two" until th
 - AUROC: real protein 0.912, unrelated protein (target 493091, own MSA) 0.904, shuffled sequence with no MSA 0.805.
 - Real minus unrelated is +0.008 and the interval includes zero.
 - So the ranking here comes mostly from the ligand. This benchmark does not show protein-aware scoring; it does not show the head cannot use the protein.
+- Only the stock Boltz-2 affinity head was run on the decoys; the fine-tuned heads (top-N or balanced) were not, so whether fine-tuning changes the protein dependence is untested (it needs new inference on the decoy complexes).
 - Not tested: whether the ligand signal is memorised chemotypes or general ligand properties, and any other target.
 - Notebook: `05_pose_density_and_decoy`.
 
@@ -64,7 +69,8 @@ statistic is meaningful yet: read each finding as "holds for these two" until th
 - Top-scored actives against scaffold-diverse ones: borderline (0.195 against 0.170, paired t p = 0.044, Wilcoxon p = 0.062).
 - N=600 and N=1000 are no better than N=300 (not detected with 5 seeds, not proof).
 - 9 comparisons were made (Bonferroni threshold 0.0056) and none passes, so these are suggestive.
-- Untested on any other target. 504329's candidate pool has 85 actives (588689: 184), so the same design would not give the same balance.
+- Bottom line on 588689: balanced is the best of the strategies tested for AP and for seed-to-seed stability, but not at the top 1% and not for twins (findings 2-4), and none of the comparisons survives the multiple-comparison correction.
+- Untested on any other target (the balanced arms for 504329 would need about 60 GPU-hours). 504329's candidate pool has 85 actives (588689: 184), so the same design would not give the same balance.
 - Notebook: `06_training_strategies`.
 
 ![Training strategies](notebooks/figures/finding_6_strategies.png)
