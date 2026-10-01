@@ -109,6 +109,13 @@ if len(T4):
         ax.scatter(x, y, s=6, color="black", alpha=0.5); ax.set_title(f"{SHORT[t]}  rho={rho:.2f}", fontsize=9); ax.set_xlabel("mean pLDDT"); rows.append({"target": SHORT[t], "Spearman rho": round(rho, 3), "p": float(f"{p:.2g}")})
     axes[0].set_ylabel("pose contact (%)"); plt.tight_layout(); plt.show(); display(pd.DataFrame(rows).set_index("target"))'''),
 
+ md("### 5b. How localised are the poses?\nPer target: the share of all pose contacts carried by the 10% most-contacted residues, the residues touched in at least half of the library's poses (\"hot\"), their pLDDT against the rest, and how many very-low-confidence residues (pLDDT below 50) are touched in at least 10% of poses. Contact frequency is the fraction of the library's poses whose ligand touches the residue (pose-density map of the reference structure)."),
+ code(r'''rows = []
+for t in READY:
+    m = MEAN[t]; cf = DEN[t].contact_frac.values; n = len(cf); order = np.argsort(-cf); top10 = cf[order[:int(np.ceil(0.1 * n))]].sum() / cf.sum(); hot = cf >= 0.5; low = m < 50
+    rows.append({"target": SHORT[t], "residues": n, "% of contacts on top 10% residues": round(100 * top10, 0), "hot residues (>= 50% of poses)": int(hot.sum()), "% of residues hot": round(100 * hot.mean(), 1),
+                 "mean pLDDT hot": round(m[hot].mean(), 1) if hot.any() else np.nan, "mean pLDDT rest": round(m[~hot].mean(), 1), "residues pLDDT < 50": int(low.sum()), "...of which touched in >= 10% of poses": int((low & (cf >= 0.1)).sum())})
+T5b = pd.DataFrame(rows).set_index("target"); display(T5b)'''),
  md("## 6. Is the protein fold the same across compounds?\n"
     "Because the protein is re-predicted for every ligand, the per-residue pLDDT can change from compound to compound. Per target: the spread (SD over sampled poses) of the per-pose protein pLDDT, "
     "and the per-residue SD along the sequence (large SD marks regions whose confidence depends on the ligand)."),

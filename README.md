@@ -21,49 +21,92 @@ statistic is meaningful yet: read each finding as "holds for these two" until th
 `pipeline_local/make_readme_figures.py`.
 
 ### 1. Head-FT replicates in direction on both targets, with a smaller effect than the paper's
-Average precision (AP), 5 seeds, N=300 labels. 588689: No-FT 0.097 (paper 0.096) to head-FT 0.207 +/- 0.015, x2.12 (paper x2.46). 504329: No-FT 0.051 (paper 0.047) to head-FT 0.174 +/- 0.021, x3.42 (paper x4.76).
-The dataset's shipped No-FT scores reproduce the paper's No-FT values on all 8 targets (same eval-set size and active count, AP within 0.005): that checks the evaluation, not our own Boltz-2 runs. `01_replication`, `00_overview`.
+- Average precision (AP), 5 seeds, N=300 labels.
+- 588689: No-FT 0.097 (paper 0.096), head-FT 0.207 +/- 0.015, x2.12 (paper x2.46).
+- 504329: No-FT 0.051 (paper 0.047), head-FT 0.174 +/- 0.021, x3.42 (paper x4.76).
+- The dataset's shipped No-FT scores reproduce the paper's No-FT values on all 8 targets (same eval-set size and active count, AP within 0.005). That checks the evaluation, not our own Boltz-2 runs.
+- Notebooks: `01_replication`, `00_overview`.
 
 ![Replication](notebooks/figures/finding_1_replication.png)
 
 ### 2. At the top 1% of the library, head-FT finds more actives and flags fewer wrong compounds
-497 compounds flagged per target. 588689: 125 actives against 67 for No-FT, 372 false positives against 430. 504329: 138 against 43, 359 against 454. At the default p > 0.5 threshold head-FT looks conservative (588689: flags 200 compounds against 2,062), which is a threshold effect from its lower probabilities, not a worse ranking. `03_ft_vs_noft_reranking`.
+- 497 compounds flagged per target. Confusion matrices below (rows: truth; columns: flagged or not).
+- 588689: 125 actives found against 67 for No-FT (recall 32% against 17%), 372 false positives against 430.
+- 504329: 138 actives against 43 (recall 32% against 10%), 359 false positives against 454.
+- At the default p > 0.5 threshold head-FT looks conservative (588689: flags 200 compounds against 2,062). That is a threshold effect from its lower probabilities, not a worse ranking.
+- Notebook: `03_ft_vs_noft_reranking`.
 
-![Top 1%](notebooks/figures/finding_2_top1pct.png)
+![Top 1% confusion matrices](notebooks/figures/finding_2_top1pct.png)
 
 ### 3. The gain is concentrated in actives that resemble the training actives
-Binning held-out actives by their highest ECFP4 Tanimoto to a training active: those below 0.3 get no net lift; those at 0.3-0.5 and above 0.5 are promoted strongly (588689 median rank gain x2.2 and x5.0; 504329 x8.2 and x11.4). Inactives show almost no such trend (Spearman 0.07-0.12, against 0.31-0.53 for actives).
-On 588689 the net top-1% change (+58 actives, -58 false positives) hides 704 compounds changing status (76 actives promoted, 18 lost; 334 false positives removed, 276 created), and the new false positives include inactive members of the same families. So head-FT behaves like generalisation to analogs of the 300 labels, not like a model that has learned binding in general. A no-training baseline (rank by Tanimoto to the nearest training active) reaches AP 0.166 on 588689 against 0.207 for head-FT. Correlational, two targets; 504329 has only 28 training actives. `03_ft_vs_noft_reranking`.
+- Held-out actives binned by their highest ECFP4 Tanimoto to a training active. Below 0.3: no net lift. 0.3-0.5 and above 0.5: promoted strongly.
+- Median rank gain: 588689 x2.2 and x5.0; 504329 x8.2 and x11.4 (below 0.3: about x1.2 in both).
+- Inactives show almost no such trend (Spearman 0.07-0.12, against 0.31-0.53 for actives).
+- On 588689 the net top-1% change hides 704 compounds changing status: 76 actives promoted, 18 lost, 334 false positives removed, 276 created. The new false positives include inactive members of the same families.
+- A no-training baseline (rank by Tanimoto to the nearest training active) reaches AP 0.166 on 588689, against 0.207 for head-FT.
+- Reading: head-FT behaves like generalisation to analogs of the 300 labels, not like a model that has learned binding in general. Correlational, two targets; 504329 has only 28 training actives.
+- Figure: three example actives per bin (closest to each bin's median rank gain, not cherry-picked), with Tanimoto and rank gain.
+- Notebook: `03_ft_vs_noft_reranking`.
 
-![Similarity](notebooks/figures/finding_3_similarity.png)
+![Similarity to the training actives](notebooks/figures/finding_3_similarity.png)
 
-### 4. Head-FT does not tell near-identical molecules apart any better than No-FT, and size and lipophilicity explain much of what is separated
-Pairs of ECFP4 Tanimoto >= 0.6 where one molecule is active and its twin inactive (737 pairs, 2 targets; one series made 62% of 588689's pairs, so intervals resample series). The active is scored above its inactive twin in 67% of pairs for No-FT and 65% for head-FT (difference -0.02, 95% CI -0.05 to +0.04; chance is 50%). Most twins get almost the same score (537 of 737 pairs are ties), so a fine-tuned model moves a whole series up together.
-Calls that are right go with an active that is larger and greasier (median +23 Da, +0.47 logP) and wrong calls with a smaller, less lipophilic active (-9 Da, -0.31 logP); in pairs matched on size and logP (58 pairs) head-FT is at chance (0.47). Models are still right more often than wrong in pairs where the active is neither larger nor greasier (No-FT 28 against 11), so size is not the whole story. `04_structural_cliffs`.
+### 4. Head-FT does not tell near-identical molecules apart any better than No-FT; size and lipophilicity explain much of what is separated
+- Pairs with ECFP4 Tanimoto >= 0.6, one active and its twin inactive: 737 pairs, 2 targets. Intervals resample chemical series (one series made 62% of 588689's pairs).
+- The active is scored above its inactive twin in 67% of pairs for No-FT and 65% for head-FT (difference -0.02, 95% CI -0.05 to +0.04; chance is 50%).
+- Most twins get almost the same score (537 of 737 pairs are ties): a fine-tuned model moves a whole series up together.
+- Right calls go with a larger, greasier active (median +23 Da, +0.47 logP); wrong calls with a smaller, less lipophilic one (-9 Da, -0.31 logP).
+- In pairs matched on size and logP (58 pairs) head-FT is at chance (0.47). Models are still right more often than wrong where the active is neither larger nor greasier (No-FT 28 against 11), so size is not the whole story.
+- Notebook: `04_structural_cliffs`.
 
 ![Near-identical pairs](notebooks/figures/finding_4_pairs.png)
 
 ### 5. The ranking is largely protein-independent on the one target tested
-Decoy rescore on 588689: the same 1,600 ligands (396 active, the rest a random sample of inactives) scored against the real protein, an unrelated protein (target 493091, with its own MSA) and a shuffled-sequence protein with no MSA. AUROC 0.912, 0.904 and 0.805; real minus unrelated is +0.008 with an interval that includes zero. The affinity head's ranking here comes mostly from the ligand, so this benchmark does not show protein-aware scoring; it does not show the head cannot use the protein. Not tested: whether the ligand signal is memorised chemotypes or general ligand properties, and any other target. `05_pose_density_and_decoy`.
+- Decoy rescore on 588689: the same 1,600 ligands (396 active, the rest a random sample of inactives) scored against three proteins.
+- AUROC: real protein 0.912, unrelated protein (target 493091, own MSA) 0.904, shuffled sequence with no MSA 0.805.
+- Real minus unrelated is +0.008 and the interval includes zero.
+- So the ranking here comes mostly from the ligand. This benchmark does not show protein-aware scoring; it does not show the head cannot use the protein.
+- Not tested: whether the ligand signal is memorised chemotypes or general ligand properties, and any other target.
+- Notebook: `05_pose_density_and_decoy`.
 
 ![Decoy protein](notebooks/figures/finding_5_decoy.png)
 
 ### 6. Training-set selection (588689 only, 70 arms, 5 seeds each): balanced helps, hard negatives hurt, budget saturates at N=300
-A balanced set (half actives, random inactives) gives AP x1.27 over the paper's naive top-N (paired p = 0.028; x1.08 at N=600). Hard negatives hurt: x0.70 (p = 0.012), and balanced beats hard-negative 0.195 to 0.108 in 5 of 5 seeds, because pushing high-scoring decoys down also demotes true actives. Whether top-scored actives beat scaffold-diverse ones is borderline (0.195 against 0.170, paired t p = 0.044, Wilcoxon p = 0.062). N=600 and N=1000 are no better than N=300 (not detected with 5 seeds, not proof). 9 comparisons were made (Bonferroni threshold 0.0056): none passes, so these are suggestive. Untested on any other target; 504329's candidate pool has 85 actives (588689: 184), so the same design would not give the same balance. `06_training_strategies`.
+- Balanced set (half actives, random inactives): AP x1.27 over the paper's naive top-N (paired p = 0.028; x1.08 at N=600).
+- Hard negatives hurt: x0.70 (p = 0.012). Balanced beats hard-negative 0.195 to 0.108 in 5 of 5 seeds, because pushing high-scoring decoys down also demotes true actives.
+- Top-scored actives against scaffold-diverse ones: borderline (0.195 against 0.170, paired t p = 0.044, Wilcoxon p = 0.062).
+- N=600 and N=1000 are no better than N=300 (not detected with 5 seeds, not proof).
+- 9 comparisons were made (Bonferroni threshold 0.0056) and none passes, so these are suggestive.
+- Untested on any other target. 504329's candidate pool has 85 actives (588689: 184), so the same design would not give the same balance.
+- Notebook: `06_training_strategies`.
 
 ![Training strategies](notebooks/figures/finding_6_strategies.png)
 
 ### 7. Seed spread is small and ensembling the five seeds helps a little; uncertainty measures are diagnostic, not a screening lever
-Single-seed AP at N=300 varies by 7% (588689) and 12% (504329) around the mean (SD / mean), and the 5-seed ensemble's AP is 4% and 11% above the average single seed. On 588689, across 20 tests no uncertainty measure (two-head disagreement, cross-seed variance, structural confidence) improves early enrichment or flags the model's errors; the top-1% shortlist overlaps only about 0.69 (Jaccard) between seeds. `02_uncertainty`.
+- Single-seed AP at N=300 varies by 7% (588689) and 12% (504329) around the mean (SD / mean).
+- The 5-seed ensemble's AP is 4% and 11% above the average single seed.
+- On 588689, across 20 tests no uncertainty measure (two-head disagreement, cross-seed variance, structural confidence) improves early enrichment or flags the model's errors.
+- The top-1% shortlist overlaps only about 0.69 (Jaccard) between seeds.
+- Notebook: `02_uncertainty`.
 
 ![Seeds and ensembling](notebooks/figures/finding_7_seeds.png)
 
-### 8. The Boltz-2 structures are folded and mostly confident, not disordered
-Mean per-residue pLDDT 82-97 across the 8 targets; only 504329 and 2097 have about 10% of residues below pLDDT 50, and 87% of all such residues are at the chain termini. Secondary structure of the reference structures is typical of folded proteins (helix 33-65%, sheet 0-26%). This is Boltz-2's confidence in its own prediction, not an experimental measure. `07_structure_confidence`.
+### 8. Poses localise to one confidently predicted pocket; the low-confidence residues are elsewhere
+- A small set of residues takes almost all the contacts: the top 10% of residues carry 94% of all pose contacts on 588689 and 74% on 504329.
+- 11 residues (4%) on 588689 and 12 (5.5%) on 504329 are touched in at least half of the library's poses. They are confidently predicted: mean pLDDT 97.8 and 95.0, against 94.0 and 81.1 for the other residues.
+- Low-confidence residues (pLDDT < 50: 2 on 588689, 22 on 504329) are mostly not where poses go: 0 and 1 of them are touched in 10% or more of poses. Across all 8 targets 87% of residues below pLDDT 50 sit at the chain termini.
+- The correlation between pLDDT and pose contact per residue is weak (Spearman 0.11 and -0.16).
+- Figure: reference structures coloured by pLDDT (left) and by pose density (right), ray-traced PyMOL renders.
+- Caveats: pLDDT is averaged over about 400 sampled poses and the density map is from one reference prediction; both are Boltz-2's own output, not experimental data.
+- Notebooks: `05_pose_density_and_decoy`, `07_structure_confidence`.
 
-![pLDDT](notebooks/figures/finding_8_plddt.png)
+![Localisation of poses and confidence](notebooks/figures/finding_8_localization.png)
 
-**Caveats that apply throughout:** two finished targets; the paper trained each condition once (we use 5 seeds); pair-level intervals resample chemical series, not pairs; the binary label is the only ground truth (no potency labels exist). The pipeline, run instructions and the older controls-and-caveats notes are in `docs/PIPELINE_NOTES.md`.
+**Caveats that apply throughout:**
+- Two finished targets.
+- The paper trained each condition once (we use 5 seeds).
+- Pair-level intervals resample chemical series, not pairs.
+- The binary label is the only ground truth (no potency labels exist).
+- Pipeline, run instructions and the older controls-and-caveats notes: `docs/PIPELINE_NOTES.md`.
 
 ---
 

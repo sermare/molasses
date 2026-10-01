@@ -31,31 +31,46 @@ for j, r in enumerate(rows):
 ax.set_xticks(x); ax.set_xticklabels([SH[r[0]] for r in rows]); ax.set_ylabel("average precision"); ax.set_ylim(0, 0.33); ax.set_title("Replication: average precision, paper and ours (x = head-FT / No-FT)"); ax.legend(fontsize=8, ncol=2, loc="upper center")
 save(fig, "finding_1_replication.png")
 
-# 2. top 1% of the library: actives found and false positives
-fig, axes = plt.subplots(1, 2, figsize=(9, 4.2))
-for j, t in enumerate(DONE):
-    S = bc.scores(t); k = int(np.ceil(0.01 * len(S))); ft = bc.ft_mean(S, 300)
-    res = {}
-    for nm, sc in (("No-FT", S.noft_p), ("head-FT", ft)):
-        top = S.loc[sc.sort_values(ascending=False).index[:k]]; res[nm] = (int(top.label.sum()), int(k - top.label.sum()))
-    ax = axes[j]; xs = np.arange(2)
-    for q, (nm, col) in enumerate((("No-FT", "#9ecae1"), ("head-FT", OUR))):
-        ax.bar(xs + (q - 0.5) * 0.35, res[nm], 0.35, color=col, label=nm)
-        for i_, v in enumerate(res[nm]): ax.text(i_ + (q - 0.5) * 0.35, v + 5, str(v), ha="center", fontsize=9)
-    ax.set_xticks(xs); ax.set_xticklabels(["true actives found", "false positives"]); ax.set_ylabel(f"compounds in the top 1% (n = {k})"); ax.set_title(f"{SH[t]}"); ax.legend(fontsize=8)
-fig.suptitle("Top 1% of the library: No-FT against head-FT (5-seed ensemble, N=300)"); save(fig, "finding_2_top1pct.png")
+# 2. top 1% of the library as confusion matrices (rows: truth, columns: flagged in the top 1% or not)
+fig, axes = plt.subplots(len(DONE), 2, figsize=(9.5, 4.6 * len(DONE)), squeeze=False)
+for i, t in enumerate(DONE):
+    S = bc.scores(t); k = int(np.ceil(0.01 * len(S))); ft = bc.ft_mean(S, 300); na = int(S.label.sum()); nn = len(S) - na
+    for j, (nm, sc) in enumerate((("No-FT", S.noft_p), ("head-FT (5-seed ensemble, N=300)", ft))):
+        top = S.loc[sc.sort_values(ascending=False).index[:k]]; tp = int(top.label.sum()); fp = k - tp; fn = na - tp; tn = nn - fp
+        M = np.array([[tp, fn], [fp, tn]]); R = M / M.sum(axis=1, keepdims=True); ax = axes[i, j]
+        ax.imshow(R, cmap="Blues", vmin=0, vmax=1.0)
+        for r in range(2):
+            for c in range(2): ax.text(c, r, f"{M[r, c]:,}\n({100 * R[r, c]:.1f}% of row)", ha="center", va="center", fontsize=10, color="white" if R[r, c] > 0.55 else BLK)
+        ax.set_xticks([0, 1]); ax.set_xticklabels(["flagged\n(top 1%)", "not flagged"]); ax.set_yticks([0, 1]); ax.set_yticklabels([f"active\n(n={na})", f"inactive\n(n={nn:,})"]); ax.grid(False)
+        ax.set_title(f"{SH[t]}: {nm}\nrecall {100 * tp / na:.0f}%, precision {100 * tp / k:.0f}%", fontsize=10)
+fig.suptitle("Top 1% of the library flagged by No-FT and by head-FT (confusion matrices)"); save(fig, "finding_2_top1pct.png")
 
-# 3. the gain is concentrated in actives that resemble the training actives
-fig, ax = plt.subplots(figsize=(8, 4.2)); labs = ["< 0.3", "0.3 - 0.5", ">= 0.5"]; w = 0.35
-for q, t in enumerate(DONE):
+# 3. the gain is concentrated in actives that resemble the training actives, with example molecules (3 per bin, closest to the bin's median rank gain)
+from rdkit import Chem
+from rdkit.Chem import Draw
+labs = ["< 0.3", "0.3 - 0.5", ">= 0.5"]; w = 0.35; BIN = {}
+for t in DONE:
     S = bc.scores(t); S["ft"] = bc.ft_mean(S, 300); S["rn"] = S.noft_p.rank(ascending=False, method="first"); S["rf"] = S.ft.rank(ascending=False, method="first")
     S["rshift"] = np.log2(S.rn / S.rf); tt = br.sim_table(t); tr = bc.train_ids(t, 300); tra = [i for i in tr if bool(tt.target_active_v2.get(i, False))]
     ref = [f for f in br.fps(tt["neut-smiles"].reindex(tra).values) if f is not None]; A = S[S.label == 1].copy(); A["tc"] = br.max_sim(A.smiles.values, ref)
-    A["bin"] = pd.cut(A.tc, [0, 0.3, 0.5, 1.01], labels=labs, right=False); g = A.groupby("bin", observed=True).rshift.agg(["median", "size"])
-    ax.bar(np.arange(3) + (q - 0.5) * w, 2 ** g["median"].values, w, color=[OUR, THEIR][q % 2], label=f"{SH[t]} ({len(ref)} training actives)")
+    A["bin"] = pd.cut(A.tc, [0, 0.3, 0.5, 1.01], labels=labs, right=False); BIN[t] = (A, A.groupby("bin", observed=True).rshift.agg(["median", "size"]), len(ref))
+fig = plt.figure(figsize=(16, 4.6 + 2.0 * len(DONE))); gs = fig.add_gridspec(1 + len(DONE), 9, height_ratios=[3.4] + [1.0] * len(DONE)); ax = fig.add_subplot(gs[0, :])
+for q, t in enumerate(DONE):
+    A, g, nref = BIN[t]; ax.bar(np.arange(3) + (q - 0.5) * w, 2 ** g["median"].values, w, color=[OUR, THEIR][q % 2], label=f"{SH[t]} ({nref} training actives)")
     for i_, (m, n) in enumerate(zip(g["median"].values, g["size"].values)): ax.text(i_ + (q - 0.5) * w, 2 ** m + 0.15, f"n={n}", ha="center", fontsize=8)
-ax.axhline(1, color=BLK, lw=0.8); ax.set_xticks(range(3)); ax.set_xticklabels(labs); ax.set_xlabel("active's highest Tanimoto to a training active"); ax.set_ylabel("median rank gain under head-FT (fold)"); ax.legend(fontsize=8)
-ax.set_title("Head-FT moves up actives that resemble the training actives"); save(fig, "finding_3_similarity.png")
+ax.axhline(1, color=BLK, lw=0.8); ax.set_xlim(-0.5, 2.5); ax.set_xticks(range(3)); ax.set_xticklabels(labs); ax.set_xlabel("active's highest Tanimoto to a training active"); ax.set_ylabel("median rank gain under head-FT (fold)"); ax.legend(fontsize=8, loc="upper left")
+ax.set_title("Head-FT moves up actives that resemble the training actives (below: three example actives per bin, closest to each bin's median rank gain)", fontsize=11)
+for r, t in enumerate(DONE):
+    A, g, _ = BIN[t]
+    for b, lab in enumerate(labs):
+        sub = A[A.bin == lab]
+        if sub.empty: continue
+        med = g.loc[lab, "median"]; pick = sub.iloc[(sub.rshift - med).abs().argsort()[:3]]
+        for c, (_, row) in enumerate(pick.iterrows()):
+            axm = fig.add_subplot(gs[1 + r, b * 3 + c]); m = Chem.MolFromSmiles(row.smiles)
+            if m is not None: axm.imshow(Draw.MolToImage(m, size=(320, 240)))
+            axm.axis("off"); axm.set_title(f"{SH[t]}  Tc {row.tc:.2f}, x{2 ** row.rshift:.1f}", fontsize=8)
+save(fig, "finding_3_similarity.png")
 
 # 4. near-identical pairs: accuracy by pair type (values from notebook 04, section 3b, 2 targets pooled)
 strata = ["active larger\n(n=348)", "same size\n(n=164)", "active smaller\n(n=225)", "property-matched\n(n=58)"]
@@ -97,16 +112,12 @@ for j, t in enumerate(DONE):
 ax.set_xticks(range(len(DONE))); ax.set_xticklabels([SH[t] for t in DONE]); ax.set_xlim(-0.6, len(DONE) - 0.1); ax.set_ylabel("average precision (N=300)"); ax.legend(fontsize=8, loc="lower right"); ax.set_title("Seed-to-seed spread and the gain from ensembling")
 save(fig, "finding_7_seeds.png")
 
-# 8. structure confidence: share of residues per pLDDT band, all targets with poses
-import bft_structure as bs
-rows = []
-for t in bc.TARGETS:
-    try: S_ = bs.sample_poses(t)
-    except Exception: S_ = None
-    if S_ is None: continue
-    m = S_["plddt"].mean(0) * 100; rows.append((SH[t], [100 * (m < 50).mean(), 100 * ((m >= 50) & (m < 70)).mean(), 100 * ((m >= 70) & (m < 90)).mean(), 100 * (m >= 90).mean()]))
-fig, ax = plt.subplots(figsize=(8, 4.2)); bottom = np.zeros(len(rows))
-for k, (lab, col) in enumerate(zip(["< 50", "50-70", "70-90", ">= 90"], ["#ff7d45", "#ffdb13", "#65cbf3", "#0053d6"])):
-    v = np.array([r[1][k] for r in rows]); ax.bar([r[0] for r in rows], v, bottom=bottom, color=col, label=f"pLDDT {lab}"); bottom += v
-ax.set_ylabel("residues (%)"); ax.set_title("Boltz-2 structures: share of residues per pLDDT band (mean over ~400 poses)"); ax.set_ylim(0, 100); ax.legend(fontsize=8, ncol=4, loc="upper center", bbox_to_anchor=(0.5, -0.08), frameon=False)
-save(fig, "finding_8_plddt.png")
+# 8. localisation: Boltz-2 structures of the two finished targets, coloured by pLDDT and by pose density (stitched from the PyMOL renders)
+import matplotlib.image as mpimg
+fig, axes = plt.subplots(len(DONE), 2, figsize=(14, 5.4 * len(DONE)), squeeze=False)
+for i, t in enumerate(DONE):
+    for j, (v, ti) in enumerate((("plddt", "coloured by pLDDT (dark blue = very confident, orange = very low)"), ("overview", "coloured by pose density (white = rarely touched, red = most contacted)"))):
+        p = bc.AN / t / "render" / f"{v}.png"; ax = axes[i, j]; ax.axis("off")
+        if p.exists(): ax.imshow(mpimg.imread(p))
+        ax.set_title(f"{SH[t]}: {ti}", fontsize=10)
+fig.suptitle("Where poses go and where the model is unsure (ray-traced PyMOL renders)"); save(fig, "finding_8_localization.png")
