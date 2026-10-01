@@ -1,0 +1,15 @@
+# data, results, weights and logs are not versioned
+results/
+data/
+boltz_cache/
+slurm/logs/
+# upstream clones (obtain at the commits listed in README / patches)
+BoltzFT/
+Boltz2_affinity/
+# no HTML artefacts; unrelated file
+*.html
+pmhc_tcr_walkthrough.gif
+__pycache__/
+.ipynb_checkpoints/
+*.pyc
+*.bak

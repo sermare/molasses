@@ -1,0 +1,19 @@
+diff --git a/pipeline/build_ft_inputs_full.py b/pipeline/build_ft_inputs_full.py
+index d210f39..616559a 100644
+--- a/pipeline/build_ft_inputs_full.py
++++ b/pipeline/build_ft_inputs_full.py
+@@ -35,7 +35,13 @@ def main() -> None:
+     ids_path = Path(__file__).resolve().parents[1] / 'data/splits' / f'{args.target}.txt.gz'
+     with gzip.open(ids_path, 'rt') as f:
+         ordered = [int(cid.strip().removeprefix(args.target + '_')) for cid in f]
+-    res = res.set_index(ID_COL).loc[ordered].reset_index()
++    # LOCAL PATCH (not in the authors' release): a few compounds can fail to fold (9 of 49,982 for 504329). The split list
++    # names every compound, so .loc[ordered] raised KeyError; keep only the compounds that have a structure, in split order.
++    res = res.set_index(ID_COL)
++    n_skipped = sum(1 for c in ordered if c not in res.index)
++    ordered = [c for c in ordered if c in res.index]
++    if n_skipped: print(f'[build_ft_inputs_full] skipped {n_skipped} compounds without a folded structure')
++    res = res.loc[ordered].reset_index()
+     res["boltz_rank"] = res.index + 1
+ 
+     ml = pd.DataFrame({
