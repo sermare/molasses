@@ -86,15 +86,15 @@ def train_fps(t, ids):
     tt = br.sim_table(t); tra = [i for i in ids if bool(tt.target_active_v2.get(i, False))]; return [f for f in br.fps(tt["neut-smiles"].reindex(tra).values) if f is not None]
 SER = []; BIN = {}
 for q, t in enumerate(DONE):
-    S = bc.scores(t); ref = train_fps(t, bc.train_ids(t, 300)); d, g = gain_bins(S.smiles.values, S.label.values.astype(int), S.noft_p.values, bc.ft_mean(S, 300).values, ref)
+    S = bc.scores(t); S['rn'] = S.noft_p.rank(ascending=False, method='first'); S['rf'] = bc.ft_mean(S, 300).rank(ascending=False, method='first'); ref = train_fps(t, bc.train_ids(t, 300)); d, g = gain_bins(S.smiles.values, S.label.values.astype(int), S.noft_p.values, bc.ft_mean(S, 300).values, ref)
     SER.append((f"{SH[t]} head-FT top-N, main set ({len(ref)} training actives)", g, [OUR, THEIR, "#8e44ad"][q % 3])); BIN[t] = (S, d, g)
 fig = plt.figure(figsize=(16, 4.8 + 2.0 * len(DONE))); gs = fig.add_gridspec(1 + len(DONE), 9, height_ratios=[3.6] + [1.0] * len(DONE)); ax = fig.add_subplot(gs[0, :]); w = 0.8 / len(SER)
 for q, (lab, g, col) in enumerate(SER):
     xs = np.arange(len(g)) + (q - (len(SER) - 1) / 2) * w; m = 2 ** g["median"].values; lo = 2 ** g["lo"].values; hi = 2 ** g["hi"].values
     ax.bar(xs, m, w, color=col, label=lab); ax.errorbar(xs, m, yerr=[m - lo, hi - m], fmt="none", color=BLK, capsize=3, lw=1)
     for xx, mm, h, n in zip(xs, m, hi, g["size"].values): ax.text(xx, h * 1.02 + 0.2, f"n={n}", ha="center", fontsize=7)
-ax.axhline(1, color=BLK, lw=0.8); ax.set_xlim(-0.5, 2.5); ax.set_ylim(0, None); ax.set_xticks(range(3)); ax.set_xticklabels(labs); ax.set_xlabel("active's highest Tanimoto to a training active (of that model's training set)"); ax.set_ylabel("median rank gain under head-FT (fold; bars: 95% bootstrap CI over actives)"); ax.legend(fontsize=8, loc="upper left")
-ax.set_title("Head-FT moves up actives that resemble the training actives (below: three example actives per bin, closest to each bin's median rank gain, top-N model)", fontsize=10)
+ax.axhline(1, color=BLK, lw=0.8); ax.set_xlim(-0.5, 2.5); ax.set_ylim(0, None); ax.set_xticks(range(3)); ax.set_xticklabels(labs); ax.set_xlabel("active's highest Tanimoto to a training active (of that model's training set)"); ax.set_ylabel("median rank gain (fold)\n95% bootstrap CI over actives"); ax.legend(fontsize=8, loc="upper left")
+ax.set_title("Head-FT moves up actives that resemble the training actives (below: three example actives per bin, closest to each bin's median rank gain, top-N model; titles: Tanimoto and rank under No-FT -> under head-FT)", fontsize=10)
 for r, t in enumerate(DONE):
     S, d, g = BIN[t]; g = g.assign(median=g['median']); A = S[S.label == 1].copy(); A["tc"] = d.tc.values; A["bin"] = d.bin.values; A["rshift"] = d.sh.values
     for b, lab in enumerate(labs):
@@ -104,7 +104,7 @@ for r, t in enumerate(DONE):
         for c, (_, row) in enumerate(pick.iterrows()):
             axm = fig.add_subplot(gs[1 + r, b * 3 + c]); m = Chem.MolFromSmiles(row.smiles)
             if m is not None: axm.imshow(Draw.MolToImage(m, size=(320, 240)))
-            axm.axis("off"); axm.set_title(f"{SH[t]}  Tc {row.tc:.2f}, x{2 ** row.rshift:.1f}", fontsize=8)
+            axm.axis("off"); axm.set_title(f"{SH[t]}  Tc {row.tc:.2f}\nrank {int(row.rn):,} -> {int(row.rf):,}", fontsize=8)
 save(fig, "finding_3_similarity.png")
 
 # 4. near-identical pairs: accuracy by size difference (notebook 04, section 3b) and, on 588689's held-out set, No-FT vs top-N vs balanced
