@@ -100,6 +100,7 @@ statistic is meaningful yet (with 4 targets the sign test cannot reach p < 0.05)
 - Low-confidence residues (pLDDT < 50: 2 on 588689, 22 on 504329) are mostly not where poses go: 0 and 1 of them are touched in 10% or more of poses. Across all 8 targets 87% of residues below pLDDT 50 sit at the chain termini.
 - The correlation between pLDDT and pose contact per residue is weak (Spearman 0.11 and -0.16).
 - Figure: reference structures coloured by pLDDT (left) and by pose density (right), ray-traced PyMOL renders.
+- Same localisation under No-FT and head-FT, by construction: poses come from the frozen structure model and Pass-2 reuses them, so a compound's pose is identical under both. What differs is which compounds each model ranks on top. Per-residue contact profiles of the top 1% of each model correlate at Spearman 0.87-0.95 across the four targets, so both point at the same pocket. On 588689 and 504329 head-FT's top 1% puts less of its contacts on the most-contacted residues (56% against 67% and 66% for No-FT; library 71% and 65%); on 743445 and 485317 there is no difference (87% and 87% against 88% and 83%).
 - Caveats: pLDDT is averaged over about 400 sampled poses and the density map is from one reference prediction; both are Boltz-2's own output, not experimental data.
 - Notebooks: `05_pose_density_and_decoy`, `07_structure_confidence`.
 

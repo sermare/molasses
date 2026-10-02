@@ -116,6 +116,30 @@ for t in READY:
     rows.append({"target": SHORT[t], "residues": n, "% of contacts on top 10% residues": round(100 * top10, 0), "hot residues (>= 50% of poses)": int(hot.sum()), "% of residues hot": round(100 * hot.mean(), 1),
                  "mean pLDDT hot": round(m[hot].mean(), 1) if hot.any() else np.nan, "mean pLDDT rest": round(m[~hot].mean(), 1), "residues pLDDT < 50": int(low.sum()), "...of which touched in >= 10% of poses": int((low & (cf >= 0.1)).sum())})
 T5b = pd.DataFrame(rows).set_index("target"); display(T5b)'''),
+ md("### 5c. Is the localisation the same for No-FT and head-FT?\nThe poses come from Pass-1, the frozen structure model; head fine-tuning changes only the affinity head's scores, and Pass-2 reuses the stored poses (`--reuse_pre_affinity_dir`). So the pose of any given compound is **identical** under No-FT and head-FT, and the library-wide density map above is the same for both. "
+    "What can differ is **which compounds each model ranks on top**, and so which pocket residues the poses of its top 1% touch. Here the per-residue contact frequency (ligand within 5 A) is computed over the top-1% compounds of No-FT and of head-FT (N=300, 5-seed mean) for every finished target, and compared with the library-wide map. "
+    "'Hot' residues are those touched in at least half of the library's poses. Self-filling: targets without full scoring are skipped."),
+ code(r'''import bft_localization as bl
+LOC = {}
+for t in bc.done_targets("scores"):
+    try:
+        d = bl.profile(t)
+        if d is not None: LOC[t] = d
+    except Exception as e: print(f"{SHORT[t]}: localisation error {e!r}")
+if not LOC: print("pending: no fully scored target yet")
+else:
+    rows = []
+    for t, d in LOC.items():
+        hot = d.library >= 0.5; share = lambda x: 100 * x[hot].sum() / x.sum()
+        rows.append({"target": SHORT[t], "top-1% poses (No-FT / head-FT)": f"{d.n_noft.iloc[0]} / {d.n_ft.iloc[0]}", "compounds in both top-1% sets": int(d.n_overlap.iloc[0]),
+                     "Spearman No-FT vs head-FT profile": round(stats.spearmanr(d.top1_noft, d.top1_ft)[0], 2), "Spearman No-FT vs library": round(stats.spearmanr(d.top1_noft, d.library)[0], 2), "Spearman head-FT vs library": round(stats.spearmanr(d.top1_ft, d.library)[0], 2),
+                     "% of contacts on hot residues: library": round(share(d.library)), "No-FT top 1%": round(share(d.top1_noft)), "head-FT top 1%": round(share(d.top1_ft))})
+    T5c = pd.DataFrame(rows).set_index("target"); display(T5c)
+    fig, axes = plt.subplots(len(LOC), 1, figsize=(15, 2.6 * len(LOC)), squeeze=False)
+    for ax, (t, d) in zip(axes[:, 0], LOC.items()):
+        x = d.res_num.values; ax.plot(x, 100 * d.library, color="#999999", lw=1.2, label="library (all poses)"); ax.plot(x, 100 * d.top1_noft, color="#2a78d6", lw=1.2, label="top 1% by No-FT"); ax.plot(x, 100 * d.top1_ft, color="#1baf7a", lw=1.2, label="top 1% by head-FT")
+        ax.set_ylim(0, 100); ax.set_ylabel("residues in contact (%)"); ax.set_title(f"{SHORT[t]}", fontsize=10); ax.legend(fontsize=8, ncol=3, loc="upper right")
+    axes[-1, 0].set_xlabel("residue number"); plt.tight_layout(); plt.show()'''),
  md("## 6. Is the protein fold the same across compounds?\n"
     "Because the protein is re-predicted for every ligand, the per-residue pLDDT can change from compound to compound. Per target: the spread (SD over sampled poses) of the per-pose protein pLDDT, "
     "and the per-residue SD along the sequence (large SD marks regions whose confidence depends on the ligand)."),
