@@ -876,6 +876,38 @@ SV = pd.DataFrame(rows).set_index("target"); display(SV.round(3)); KEY["SV"] = S
 fig, ax = plt.subplots(figsize=(9, 4.2)); vc = pd.Series(np.concatenate(VOTES)).value_counts(normalize=True).reindex(range(6)).fillna(0)
 ax.bar(range(6), vc, color=CL); ax.set_xlabel("seeds (of 5) that rank the ACTIVE above its inactive partner (cliff pairs)"); ax.set_ylabel("share of cliff pairs (pooled)"); ax.set_title(f"do the five seeds agree? ({NT} target(s) pooled)"); plt.tight_layout(); plt.show()'''),
 
+ md("# Part C2 · Is balanced training better on near-identical pairs? (588689 only)\n"
+    "The balanced training set (N=300: half actives, half random inactives) was the best strategy for average precision on 588689 (notebook 06). Does it also separate near-identical siblings better? "
+    "Balanced arms exist for 588689 only, so this part is one target. No-FT, standard top-N and balanced head-FT (5 seeds each, seed-mean score) are all scored on the same held-out compounds (the 48,985 ranked below 1000 by the dataset's Boltz-2 score), so only pairs with both members in that set are used. "
+    "Ground truth is the binary label; the large-delta threshold is calibrated on both-active pairs (90% specificity, log-odds scale, as in Part C); intervals resample chemical series."),
+ code(r'''import bft_balanced_pairs as bp
+BD = bp.load()
+if BD is None: print("pending: balanced training arms not found for 588689")
+else:
+    BP = bp.pair_table(BD); BC = BP[BP.kind == "cliff"]; BK = BP[BP.kind == "conserved"]; MODELS = list(BD["scores"])
+    print(f"{len(BC)} cliff pairs in {BC.series.nunique()} series and {len(BK)} both-active pairs inside the held-out set")
+    def stats(df):
+        c = df[df.kind == "cliff"]; k = df[df.kind == "conserved"]; r = {}
+        for m in MODELS: r["acc " + m] = bp.accuracy(BD["scores"][m], c); r["sens " + m] = bp.sensitivity(BD["scores"][m], c, k)
+        for m in ("head-FT top-N", "No-FT"):
+            r[f"acc diff balanced - {m}"] = r["acc head-FT balanced"] - r["acc " + m]; r[f"sens diff balanced - {m}"] = r["sens head-FT balanced"] - r["sens " + m]
+        return r
+    pt = stats(BP); BS = bp.series_bootstrap(BP, stats, B=400)
+    ci = lambda k: f"{pt[k]:.3f} [{np.percentile(BS[k], 2.5):+.3f}, {np.percentile(BS[k], 97.5):+.3f}]" if "diff" in k else f"{pt[k]:.3f} [{np.percentile(BS[k], 2.5):.3f}, {np.percentile(BS[k], 97.5):.3f}]"
+    tab = pd.DataFrame({"active scored above its inactive twin": [ci("acc " + m) for m in MODELS], "share of cliffs detected at 90% specificity": [ci("sens " + m) for m in MODELS]}, index=MODELS); display(tab)
+    dtab = pd.DataFrame({"accuracy": [ci(f"acc diff balanced - {m}") for m in ("head-FT top-N", "No-FT")], "sensitivity at 90% specificity": [ci(f"sens diff balanced - {m}") for m in ("head-FT top-N", "No-FT")]}, index=["balanced - top-N", "balanced - No-FT"]); display(dtab)
+    STR = {"active larger (>= +1 heavy atom)": BC.dheavy >= 1, "same heavy-atom count": BC.dheavy == 0, "active smaller (<= -1)": BC.dheavy <= -1, "matched (same size, |dlogP| < 0.3)": (BC.dheavy == 0) & (BC.dlogP.abs() < 0.3)}
+    srows = {f"{k} (n={int(m.sum())})": {mm: round(bp.accuracy(BD["scores"][mm], BC[m]), 2) for mm in MODELS} for k, m in STR.items()}; display(pd.DataFrame(srows).T)
+    seedacc = {m: [bp.accuracy(s, BC) for s in BD["seeds"][m]] for m in MODELS}
+    print("per-seed pairwise accuracy (mean +/- SD over 5 seeds): " + "; ".join(f"{m} {np.mean(v):.3f} +/- {np.std(v, ddof=1) if len(v) > 1 else 0:.3f}" for m, v in seedacc.items()))
+    fig, axes = plt.subplots(1, 2, figsize=(13, 4.4)); cols = ["#9ecae1", BLUE if "BLUE" in globals() else "#2a78d6", "#1baf7a"]
+    for ax, key, yl in ((axes[0], "acc ", "active scored above its inactive twin"), (axes[1], "sens ", "share of cliffs detected at 90% specificity")):
+        for i, m in enumerate(MODELS):
+            v = pt[key + m]; lo, hi = np.percentile(BS[key + m], [2.5, 97.5]); ax.bar(i, v, 0.6, color=cols[i]); ax.errorbar(i, v, yerr=[[v - lo], [hi - v]], color="black", capsize=4); ax.text(i, hi + 0.015, f"{v:.2f}", ha="center", fontsize=9)
+        if key == "acc ": ax.axhline(0.5, color="black", ls="--", lw=0.9)
+        ax.set_xticks(range(3)); ax.set_xticklabels(MODELS); ax.set_ylim(0, 1.0 if key == "acc " else 0.6); ax.set_ylabel(yl)
+    fig.suptitle(f"588689 near-identical pairs in the held-out set ({len(BC)} cliffs, {BC.series.nunique()} series; 95% CI over series)"); plt.tight_layout(); plt.show()
+    KEY["C2"] = dict(pt=pt, lo={k: float(np.percentile(BS[k], 2.5)) for k in BS}, hi={k: float(np.percentile(BS[k], 97.5)) for k in BS}, n=len(BC), series=int(BC.series.nunique()))'''),
  md("# Part D · Cross-target summary\n"
     "One row per target. Retrieval AP (No-FT and head-FT N=300) is shown **ours next to the paper's** as the replication context for this analysis; the paper reports no "
     "pair-level results, so the pair columns are ours only. Targets without a finished analysis show their pending reason and the paper's values only."),

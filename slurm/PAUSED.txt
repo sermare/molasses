@@ -1,0 +1,6 @@
+Paused 2026-10-01 ~09:35 to prioritise finishing 485317 and 743445 (Pass-2 repair, then training and scoring).
+Held (scontrol hold): Pass-1 arrays p1_2097 (39397415), p1_2650 (39397563), p1_588549 (39397585), p1_493091 (39397545). Their running tasks were cancelled (Pass-1 resumes per compound).
+Cancelled: bft_rollout orchestrator, and the 493091 driver (drv_540297-493091; it would have started 493091 Pass-2).
+The 2097, 2650, 588549 drivers are still alive and wait while their held arrays are queued.
+Resume: scontrol release 39397415 39397563 39397585 39397545 ; sbatch slurm/rollout.sbatch (relaunches the 493091 driver and watches all drivers).
+Pass-2 repair for 485317/743445: slurm/pass2_tail.sbatch (arrays named p2_<id> so the drivers keep waiting).

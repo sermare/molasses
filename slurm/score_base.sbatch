@@ -8,7 +8,7 @@
 #SBATCH --cpus-per-task=4
 #SBATCH --gres=gpu:1
 #SBATCH --exclude=n0143.savio3,n0144.savio3,n0215.savio3
-#SBATCH --time=02:00:00
+#SBATCH --time=12:00:00   # one arm scores 50 chunks x ~7 min (~6 h); 2 h timed out (scoring is resume-friendly: it skips chunks already written)
 #SBATCH --job-name=bft_base
 #SBATCH --output=/global/scratch/users/sergiomar10/boltzaff/slurm/logs/base_%j.out
 #SBATCH --error=/global/scratch/users/sergiomar10/boltzaff/slurm/logs/base_%j.err

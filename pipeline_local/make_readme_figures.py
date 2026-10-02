@@ -84,7 +84,7 @@ def train_fps(t, ids):
 SER = []; BIN = {}
 for q, t in enumerate(DONE):
     S = bc.scores(t); ref = train_fps(t, bc.train_ids(t, 300)); d, g = gain_bins(S.smiles.values, S.label.values.astype(int), S.noft_p.values, bc.ft_mean(S, 300).values, ref)
-    SER.append((f"{SH[t]} head-FT top-N, main set ({len(ref)} training actives)", g, [OUR, THEIR][q % 2])); BIN[t] = (S, d, g)
+    SER.append((f"{SH[t]} head-FT top-N, main set ({len(ref)} training actives)", g, [OUR, THEIR, "#8e44ad"][q % 3])); BIN[t] = (S, d, g)
 if BAL:
     sm = BAL["S"].smiles.values; y = BAL["y"]
     refT = train_fps(T0, bc.train_ids(T0, 300)); _, gT = gain_bins(sm, y, BAL["noft"], BAL["top"].mean(0), refT)
@@ -109,12 +109,12 @@ for r, t in enumerate(DONE):
 save(fig, "finding_3_similarity.png")
 
 # 4. near-identical pairs: accuracy by size difference (notebook 04, section 3b) and, on 588689's held-out set, No-FT vs top-N vs balanced
-strata = ["active larger\n(n=348)", "same size\n(n=164)", "active smaller\n(n=225)", "property-matched\n(n=58)"]
-acc = {"Boltz-2 dataset": [0.71, 0.69, 0.59, 0.66], "No-FT": [0.73, 0.66, 0.59, 0.60], "head-FT N=300": [0.67, 0.62, 0.62, 0.47]}
+strata = ["active larger\n(n=388)", "same size\n(n=175)", "active smaller\n(n=260)", "property-matched\n(n=66)"]
+acc = {"Boltz-2 dataset": [0.75, 0.67, 0.69, 0.60], "No-FT": [0.75, 0.68, 0.69, 0.61], "head-FT N=300": [0.70, 0.69, 0.65, 0.56]}
 fig, axes = plt.subplots(1, 2 if BAL else 1, figsize=(14 if BAL else 8.5, 4.4), gridspec_kw=dict(width_ratios=[2.2, 1]) if BAL else None); axes = np.atleast_1d(axes); ax = axes[0]; w = 0.26
 for q, (nm, col) in enumerate(zip(acc, ["#bbbbbb", "#9ecae1", OUR])): ax.bar(np.arange(4) + (q - 1) * w, acc[nm], w, color=col, label=nm)
 ax.axhline(0.5, color=BLK, ls="--", lw=0.9); ax.text(3.45, 0.51, "chance", ha="right", fontsize=8); ax.set_ylim(0, 0.85); ax.set_xticks(range(4)); ax.set_xticklabels(strata)
-ax.set_ylabel("active scored above its inactive twin"); ax.set_title("737 pairs, 2 targets: by size difference (notebook 04, section 3b)", fontsize=10); ax.legend(fontsize=8, loc="upper right")
+ax.set_ylabel("active scored above its inactive twin"); ax.set_title("823 pairs, 3 targets: by size difference (notebook 04, section 3b)", fontsize=10); ax.legend(fontsize=8, loc="upper right")
 if BAL:
     from scipy.sparse import coo_matrix
     from scipy.sparse.csgraph import connected_components
