@@ -4,3 +4,6 @@ Cancelled: bft_rollout orchestrator, and the 493091 driver (drv_540297-493091; i
 The 2097, 2650, 588549 drivers are still alive and wait while their held arrays are queued.
 Resume: scontrol release 39397415 39397563 39397585 39397545 ; sbatch slurm/rollout.sbatch (relaunches the 493091 driver and watches all drivers).
 Pass-2 repair for 485317/743445: slurm/pass2_tail.sbatch (arrays named p2_<id> so the drivers keep waiting).
+
+2026-10-02 ~09:50: also paused Pass-1 for 2650 and 588549 so 2097 (Pass-1) and 493091 (Pass-2) get the GPUs.
+Resume: scontrol release <jobid> for the arrays named p1_2650 (39397563) and p1_588549 (39397585); their drivers are still alive and wait for the arrays.

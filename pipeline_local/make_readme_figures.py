@@ -167,4 +167,4 @@ for i, t in enumerate(DONE):
         p = bc.AN / t / "render" / f"{v}.png"; ax = axes[i, j]; ax.axis("off")
         if p.exists(): ax.imshow(mpimg.imread(p))
         ax.set_title(f"{SH[t]}: {ti}", fontsize=10)
-fig.suptitle("Where poses go and where the model is unsure (ray-traced PyMOL renders)"); save(fig, "finding_8_localization.png")
+fig.suptitle("Where poses go and where the model is unsure (ray-traced PyMOL renders)", y=0.995); fig.tight_layout(rect=(0, 0, 1, 0.975)); save(fig, "finding_8_localization.png")
