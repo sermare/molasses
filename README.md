@@ -25,7 +25,7 @@ statistic is meaningful yet (with 3 targets the sign test cannot reach p < 0.05)
 - 588689: 125 actives found against 67 for No-FT (recall 32% against 17%), 372 false positives against 430.
 - 504329: 138 actives against 43 (recall 32% against 10%), 359 false positives against 454.
 - 743445 (497 compounds flagged, 134 actives): head-FT finds fewer actives than No-FT, 17 against 22 (recall 13% against 16%), with 480 false positives against 475. Its AP still rises (x1.92), so the gain is below the very top of the ranking. Other budgets: N=40 finds 23, N=100 finds 27; per-seed N=300 finds 16-19. The top-1% result is therefore target-dependent, with 1 of 3 targets reversed.
-- Balanced training (588689 held-out set, 490 compounds flagged): No-FT 45 actives (recall 15%), top-N 94 (31%), balanced 100 (33%); false positives 445, 396 and 390. At the top 1% balanced is almost the same as top-N (+6 actives, no interval computed), so its AP advantage does not come from the very top of the ranking.
+- Balanced training (588689 held-out set, 490 compounds flagged; not in the figure): No-FT 45 actives (recall 15%), top-N 94 (31%), balanced 100 (33%); false positives 445, 396 and 390. At the top 1% balanced is almost the same as top-N (+6 actives, no interval computed), so its AP advantage does not come from the very top of the ranking.
 - At the default p > 0.5 threshold head-FT looks conservative (588689: flags 200 compounds against 2,062). That is a threshold effect from its lower probabilities, not a worse ranking.
 - Notebook: `03_ft_vs_noft_reranking`.
 
@@ -38,9 +38,9 @@ statistic is meaningful yet (with 3 targets the sign test cannot reach p < 0.05)
 - On 588689 the net top-1% change hides 704 compounds changing status: 76 actives promoted, 18 lost, 334 false positives removed, 276 created. The new false positives include inactive members of the same families.
 - A no-training baseline (rank by Tanimoto to the nearest training active) reaches AP 0.166 on 588689, against 0.207 for head-FT.
 - 743445 (only 10 training actives, so bins are small): below 0.3, n = 121, median rank change x0.6 (actives move down); 0.3-0.5, n = 7, x25; above 0.5, n = 6, x71. Spearman 0.28 for actives against 0.16 for inactives. Same direction, but the 0.3+ bins hold 13 actives.
-- The balanced model shows the same dependence (588689 held-out set, median rank gain below 0.3: x1.0; 0.3-0.5: x2.7; above 0.5: x10.8; top-N: x1.2, x2.7, x10.6), even though its training set holds 150 actives instead of 90. Balancing does not remove the reliance on analogs of the training actives.
+- The balanced model shows the same dependence (588689 held-out set; not in the figure, median rank gain below 0.3: x1.0; 0.3-0.5: x2.7; above 0.5: x10.8; top-N: x1.2, x2.7, x10.6), even though its training set holds 150 actives instead of 90. Balancing does not remove the reliance on analogs of the training actives.
 - Reading: head-FT behaves like generalisation to analogs of the 300 labels, not like a model that has learned binding in general. Correlational, two targets; 504329 has only 28 training actives.
-- Figure: three example actives per bin (closest to each bin's median rank gain, not cherry-picked), with Tanimoto and rank gain.
+- Figure: bars are the median rank gain per bin with a 95% bootstrap interval over actives (the intervals for 743445's bins above 0.3 are very wide, 6-7 actives each); three example actives per bin (closest to each bin's median rank gain, not cherry-picked), with Tanimoto and rank gain.
 - Notebook: `03_ft_vs_noft_reranking`.
 
 ![Similarity to the training actives](notebooks/figures/finding_3_similarity.png)
@@ -113,7 +113,7 @@ statistic is meaningful yet (with 3 targets the sign test cannot reach p < 0.05)
 ## Pipeline progress
 
 <!-- PROGRESS:START -->
-Pipeline progress as of 2026-10-01 23:10: 3 of 8 targets finished; 33 GPUs running.
+Pipeline progress as of 2026-10-01 23:19: 3 of 8 targets finished; 36 GPUs running.
 
 | Target | Library | Pass-1 folded | Pass-2 cached | Scored arms | Table 2 | Stage | Tasks running / pending |
 |---|---|---|---|---|---|---|---|
@@ -121,10 +121,10 @@ Pipeline progress as of 2026-10-01 23:10: 3 of 8 targets finished; 33 GPUs runni
 | 504329 | 49,982 | 49,973 (100%) | 49,973 (100%) | 16/16 | yes | done | 0 / 0 |
 | 743445 | 49,995 | 49,995 (100%) | 49,995 (100%) | 16/16 | yes | done | 0 / 0 |
 | 485317 | 49,980 | 49,976 (100%) | 49,976 (100%) | 0/16 | no | Pass-2 done, training/scoring next | 16 / 0 |
-| 2097 | 49,915 | 35,763 (72%) | 0 (0%) | 0/16 | no | Pass-1 running | 6 / 1 |
+| 2097 | 49,915 | 35,845 (72%) | 0 (0%) | 0/16 | no | Pass-1 running | 5 / 0 |
 | 493091 | 49,985 | 49,985 (100%) | 0 (0%) | 0/16 | no | Pass-1 done, Pass-2 next, no tasks queued (driver resubmits) | 0 / 0 |
-| 2650 | 49,882 | 14,938 (30%) | 0 (0%) | 0/16 | no | Pass-1 running | 6 / 16 |
-| 588549 | 49,987 | 3,541 (7%) | 0 (0%) | 0/16 | no | Pass-1 running | 5 / 138 |
+| 2650 | 49,882 | 15,136 (30%) | 0 (0%) | 0/16 | no | Pass-1 running | 9 / 13 |
+| 588549 | 49,987 | 3,589 (7%) | 0 (0%) | 0/16 | no | Pass-1 running | 6 / 137 |
 
 Regenerate with `python pipeline_local/progress.py --readme`.
 <!-- PROGRESS:END -->

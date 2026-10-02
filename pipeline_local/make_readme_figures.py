@@ -55,7 +55,7 @@ if BAL:
     ax.set_title(f"588689 held-out set (rank > 1000, n={len(BAL['y']):,}):\nbalanced training, 5 seeds", fontsize=10)
 fig.suptitle("Replication: average precision, paper and ours"); save(fig, "finding_1_replication.png")
 
-# 2. top 1% as confusion matrices (rows truth, columns flagged or not); extra row adds balanced on 588689's held-out set
+# 2. top 1% as confusion matrices (rows truth, columns flagged or not), No-FT against head-FT top-N for each finished target
 def conf_ax(ax, y, sc, title):
     k = int(np.ceil(0.01 * len(y))); na = int(y.sum()); nn = len(y) - na; order = np.argsort(-sc, kind="stable")[:k]; tp = int(y[order].sum()); fp = k - tp
     M = np.array([[tp, na - tp], [fp, nn - fp]]); R = M / M.sum(axis=1, keepdims=True); ax.imshow(R, cmap="Blues", vmin=0, vmax=1.0)
@@ -63,41 +63,40 @@ def conf_ax(ax, y, sc, title):
         for c in range(2): ax.text(c, r, f"{M[r, c]:,}\n({100 * R[r, c]:.1f}%)", ha="center", va="center", fontsize=9, color="white" if R[r, c] > 0.55 else BLK)
     ax.set_xticks([0, 1]); ax.set_xticklabels(["flagged\n(top 1%)", "not flagged"], fontsize=8); ax.set_yticks([0, 1]); ax.set_yticklabels([f"active\n(n={na})", f"inactive\n(n={nn:,})"], fontsize=8); ax.grid(False)
     ax.set_title(f"{title}\nrecall {100 * tp / na:.0f}%, precision {100 * tp / k:.0f}%", fontsize=9)
-nrow = len(DONE) + (1 if BAL else 0); fig, axes = plt.subplots(nrow, 3, figsize=(13, 4.3 * nrow), squeeze=False)
+nrow = len(DONE); fig, axes = plt.subplots(nrow, 2, figsize=(9.5, 4.3 * nrow), squeeze=False)
 for i, t in enumerate(DONE):
     S = bc.scores(t); y = S.label.values.astype(int)
-    conf_ax(axes[i, 0], y, S.noft_p.values, f"{SH[t]} (main set): No-FT"); conf_ax(axes[i, 1], y, bc.ft_mean(S, 300).values, f"{SH[t]} (main set): head-FT top-N, 5-seed ensemble"); axes[i, 2].axis("off")
-if BAL:
-    r = len(DONE); conf_ax(axes[r, 0], BAL["y"], BAL["noft"], "588689 held-out set: No-FT"); conf_ax(axes[r, 1], BAL["y"], BAL["top"].mean(0), "588689 held-out: head-FT top-N"); conf_ax(axes[r, 2], BAL["y"], BAL["bal"].mean(0), "588689 held-out: head-FT balanced")
+    conf_ax(axes[i, 0], y, S.noft_p.values, f"{SH[t]} (main set): No-FT"); conf_ax(axes[i, 1], y, bc.ft_mean(S, 300).values, f"{SH[t]} (main set): head-FT top-N, 5-seed ensemble")
 fig.suptitle("Top 1% of the library flagged (confusion matrices; cells: count and share of the row)"); save(fig, "finding_2_top1pct.png")
 
-# 3. rank gain by similarity to the training actives; up to four series, then example molecules (top-N, 3 per bin, closest to the bin's median rank gain)
+# 3. rank gain by similarity to the training actives (bootstrap CI of the median); one series per finished target, then example molecules (top-N, 3 per bin, closest to the bin's median rank gain)
 from rdkit import Chem
 from rdkit.Chem import Draw
 labs = ["< 0.3", "0.3 - 0.5", ">= 0.5"]
-def gain_bins(smiles, y, p_ref, p_mod, ref_fps):
+def gain_bins(smiles, y, p_ref, p_mod, ref_fps, B=1000):
     rn = pd.Series(p_ref).rank(ascending=False, method="first").values; rf = pd.Series(p_mod).rank(ascending=False, method="first").values; sh = np.log2(rn / rf)
     tc = br.max_sim(smiles, ref_fps); b = pd.cut(pd.Series(tc), [0, 0.3, 0.5, 1.01], labels=labs, right=False)
-    d = pd.DataFrame({"tc": tc, "sh": sh, "bin": b})[y == 1]; return d, d.groupby("bin", observed=True).sh.agg(["median", "size"])
+    d = pd.DataFrame({"tc": tc, "sh": sh, "bin": b})[y == 1]; rng = np.random.default_rng(0); rows = []
+    for lab in labs:
+        v = d[d.bin == lab].sh.values
+        if len(v) == 0: rows.append((lab, np.nan, 0, np.nan, np.nan)); continue
+        bs = np.median(v[rng.integers(0, len(v), (B, len(v)))], axis=1); rows.append((lab, np.median(v), len(v), *np.percentile(bs, [2.5, 97.5])))
+    return d, pd.DataFrame(rows, columns=["bin", "median", "size", "lo", "hi"]).set_index("bin")
 def train_fps(t, ids):
     tt = br.sim_table(t); tra = [i for i in ids if bool(tt.target_active_v2.get(i, False))]; return [f for f in br.fps(tt["neut-smiles"].reindex(tra).values) if f is not None]
 SER = []; BIN = {}
 for q, t in enumerate(DONE):
     S = bc.scores(t); ref = train_fps(t, bc.train_ids(t, 300)); d, g = gain_bins(S.smiles.values, S.label.values.astype(int), S.noft_p.values, bc.ft_mean(S, 300).values, ref)
     SER.append((f"{SH[t]} head-FT top-N, main set ({len(ref)} training actives)", g, [OUR, THEIR, "#8e44ad"][q % 3])); BIN[t] = (S, d, g)
-if BAL:
-    sm = BAL["S"].smiles.values; y = BAL["y"]
-    refT = train_fps(T0, bc.train_ids(T0, 300)); _, gT = gain_bins(sm, y, BAL["noft"], BAL["top"].mean(0), refT)
-    balids = [l.strip() for l in open(bc.RUNS / T0 / "ft_inputs_variants/train_ids_balanced_N300.txt") if l.strip()]; refB = train_fps(T0, balids); _, gB = gain_bins(sm, y, BAL["noft"], BAL["bal"].mean(0), refB)
-    SER += [(f"588689 head-FT top-N, held-out set ({len(refT)} training actives)", gT, "#9ecae1"), (f"588689 head-FT balanced, held-out set ({len(refB)} training actives)", gB, GREEN)]
 fig = plt.figure(figsize=(16, 4.8 + 2.0 * len(DONE))); gs = fig.add_gridspec(1 + len(DONE), 9, height_ratios=[3.6] + [1.0] * len(DONE)); ax = fig.add_subplot(gs[0, :]); w = 0.8 / len(SER)
 for q, (lab, g, col) in enumerate(SER):
-    xs = np.arange(len(g)) + (q - (len(SER) - 1) / 2) * w; ax.bar(xs, 2 ** g["median"].values, w, color=col, label=lab)
-    for xx, (m, n) in zip(xs, zip(g["median"].values, g["size"].values)): ax.text(xx, 2 ** m + 0.15, f"n={n}", ha="center", fontsize=7)
-ax.axhline(1, color=BLK, lw=0.8); ax.set_xlim(-0.5, 2.5); ax.set_ylim(0, None); ax.set_xticks(range(3)); ax.set_xticklabels(labs); ax.set_xlabel("active's highest Tanimoto to a training active (of that model's training set)"); ax.set_ylabel("median rank gain under head-FT (fold)"); ax.legend(fontsize=8, loc="upper left")
+    xs = np.arange(len(g)) + (q - (len(SER) - 1) / 2) * w; m = 2 ** g["median"].values; lo = 2 ** g["lo"].values; hi = 2 ** g["hi"].values
+    ax.bar(xs, m, w, color=col, label=lab); ax.errorbar(xs, m, yerr=[m - lo, hi - m], fmt="none", color=BLK, capsize=3, lw=1)
+    for xx, mm, h, n in zip(xs, m, hi, g["size"].values): ax.text(xx, h * 1.02 + 0.2, f"n={n}", ha="center", fontsize=7)
+ax.axhline(1, color=BLK, lw=0.8); ax.set_xlim(-0.5, 2.5); ax.set_ylim(0, None); ax.set_xticks(range(3)); ax.set_xticklabels(labs); ax.set_xlabel("active's highest Tanimoto to a training active (of that model's training set)"); ax.set_ylabel("median rank gain under head-FT (fold; bars: 95% bootstrap CI over actives)"); ax.legend(fontsize=8, loc="upper left")
 ax.set_title("Head-FT moves up actives that resemble the training actives (below: three example actives per bin, closest to each bin's median rank gain, top-N model)", fontsize=10)
 for r, t in enumerate(DONE):
-    S, d, g = BIN[t]; A = S[S.label == 1].copy(); A["tc"] = d.tc.values; A["bin"] = d.bin.values; A["rshift"] = d.sh.values
+    S, d, g = BIN[t]; g = g.assign(median=g['median']); A = S[S.label == 1].copy(); A["tc"] = d.tc.values; A["bin"] = d.bin.values; A["rshift"] = d.sh.values
     for b, lab in enumerate(labs):
         sub = A[A.bin == lab]
         if sub.empty: continue
