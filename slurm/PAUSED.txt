@@ -10,3 +10,5 @@ Resume: scontrol release <jobid> for the arrays named p1_2650 (39397563) and p1_
 
 2026-10-03 ~02:00: paused Pass-1 for 2650 and 588549 again (held pending, cancelled running) so 493091 scoring and 2097 get the GPUs.
 Resume: scontrol release 39397563 39397585 (their drivers are still alive and wait).
+
+2026-10-03 ~10:10: released 2650 (39585083) and 588549 (39397585) again at nice 3000 after the last 493091 arm started. Nothing is paused now.
