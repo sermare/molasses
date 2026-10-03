@@ -44,13 +44,16 @@ def pass2_count(t):
 
 def queue():
     """{(stage, tag): [running, pending]} from squeue, stage in p1, p2, base, ft."""
-    out = subprocess.run(["squeue", "-u", os.environ.get("USER", ""), "-h", "-r", "-o", "%j|%T"], capture_output=True, text=True).stdout
+    out = subprocess.run(["squeue", "-u", os.environ.get("USER", ""), "-h", "-r", "-o", "%j|%T|%r"], capture_output=True, text=True).stdout
     q = {}
     for line in out.splitlines():
-        name, state = line.split("|")
+        name, state, reason = line.split("|")
         m = re.match(r"^(p1|p2|base|ft)_(.+)$", name)
         if not m: continue
-        k = (m.group(1), m.group(2)); q.setdefault(k, [0, 0]); q[k][0 if state == "RUNNING" else 1] += 1
+        k = (m.group(1), m.group(2)); q.setdefault(k, [0, 0, 0])
+        if state == "RUNNING": q[k][0] += 1
+        elif "Held" in reason: q[k][2] += 1          # held by the user (paused on purpose)
+        else: q[k][1] += 1
     gpus = sum(1 for l in subprocess.run(["squeue", "-u", os.environ.get("USER", ""), "-h", "-t", "R", "-o", "%b"], capture_output=True, text=True).stdout.splitlines() if "gpu" in l)
     return q, gpus
 
@@ -74,10 +77,10 @@ def collect():
     for t in bc.TARGETS:
         tag = t.split("-")[-1]; lib = len(list_dirs(RUNS / t / "inputs_full"))
         r = dict(target=bc.SHORT[t], library=lib, p1=p1[t], p2=p2[t], ft_inputs=(RUNS / t / "ft_inputs_full/eval_ids.txt").exists(), arms=len(bc.scored_arms(t)), table2=(AN / t / "table2.csv").exists())
-        run = sum(q.get((s, tag), [0, 0])[0] for s in ("p1", "p2", "base", "ft")); pend = sum(q.get((s, tag), [0, 0])[1] for s in ("p1", "p2", "base", "ft"))
-        r["running"], r["pending"] = run, pend; r["stage"] = stage_of(r)
+        run = sum(q.get((s, tag), [0, 0, 0])[0] for s in ("p1", "p2", "base", "ft")); pend = sum(q.get((s, tag), [0, 0, 0])[1] for s in ("p1", "p2", "base", "ft")); held = sum(q.get((s, tag), [0, 0, 0])[2] for s in ("p1", "p2", "base", "ft"))
+        r["running"], r["pending"], r["held"] = run, pend, held; r["stage"] = stage_of(r)
         if r["stage"] != "done" and run == 0:        # say so when nothing is on a GPU
-            r["stage"] += ", waiting for GPUs" if pend else ", no tasks queued (driver resubmits)"
+            r["stage"] += ", PAUSED (held)" if held and not pend else (", waiting for GPUs" if pend else ", no tasks queued (driver resubmits)")
         rows.append(r)
     return pd.DataFrame(rows), gpus
 
@@ -86,7 +89,7 @@ def fmt(df):
     pct = lambda n, d: f"{n:,} ({100 * n / d:.0f}%)" if d else f"{n:,}"
     out = pd.DataFrame({"Target": df.target, "Library": df.library.map("{:,}".format), "Pass-1 folded": [pct(a, b) for a, b in zip(df.p1, df.library)],
                         "Pass-2 cached": [pct(a, b) for a, b in zip(df.p2, df.library)], "Scored arms": df.arms.map(lambda k: f"{k}/16"),
-                        "Table 2": df.table2.map({True: "yes", False: "no"}), "Stage": df.stage, "Tasks running / pending": [f"{a} / {b}" for a, b in zip(df.running, df.pending)]})
+                        "Table 2": df.table2.map({True: "yes", False: "no"}), "Stage": df.stage, "Tasks running / pending (held)": [f"{a} / {b}" + (f" ({c} held)" if c else "") for a, b, c in zip(df.running, df.pending, df.held)]})
     return out
 
 
