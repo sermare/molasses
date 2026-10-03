@@ -110,6 +110,25 @@ statistic is meaningful yet (with 5 targets the sign test cannot reach p < 0.05;
 
 ![Localisation of poses and confidence](notebooks/figures/finding_8_localization.png)
 
+### 9. No data leakage between training and evaluation; the gain shrinks when analogs of the training compounds are removed
+- Checked on all 5 finished targets (`pipeline_local/leakage_check.py`, results in `results/analysis/leakage_checks.csv`):
+  - The top-40, top-100 and top-300 training sets overlap the evaluation set in 0 compounds (and are nested), and the 20 validation compounds are not in any training set.
+  - 0 evaluation compounds have the same canonical SMILES (stereo removed) as a training compound.
+  - Near-duplicates are very rare: 0.01-0.09% of evaluation compounds have ECFP4 Tanimoto >= 0.8 to a training compound, and 0.26-0.66% have >= 0.6.
+- From the code, not tested here: the checkpoint evaluated is the final one (`last.ckpt`), so no model is selected on held-out data; the hyperparameters are the authors' fixed values; the 20 validation compounds are the last 20 evaluation ids and only feed a logged validation loss. The pre-trained Boltz-2 weights themselves may have seen these public compounds, which cannot be checked.
+- Leakage-controlled metric: head-FT / No-FT AP ratio at N=300 on the evaluation compounds that are not close to any training compound.
+
+| Target | all evaluation compounds | Tanimoto < 0.6 to every training compound | Tanimoto < 0.4 |
+|---|---|---|---|
+| 588689 | x2.12 | x2.03 | x1.28 |
+| 504329 | x3.42 | x3.26 | x2.25 |
+| 743445 | x1.92 | x1.62 | x0.97 |
+| 485317 | x1.39 | x1.38 | x1.34 |
+| 493091 | x1.63 | x1.47 | x1.25 |
+
+- Removing only the near-analogs (>= 0.6) barely changes the ratios, so the gain is not memorised near-duplicates.
+- Removing everything within 0.4 cuts the ratios sharply (743445 falls to x0.97, 588689 to x1.28), which matches finding 3: much of the gain comes from compounds that resemble the training set at moderate similarity. That is analog generalisation, which the paper's setup allows, but it means the headline ratio overstates what to expect for chemically unrelated compounds. 485317 is the exception, with a gain that does not depend on similarity.
+
 **Caveats that apply throughout:**
 - Two finished targets.
 - The paper trained each condition once (we use 5 seeds).
