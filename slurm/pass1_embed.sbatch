@@ -9,7 +9,7 @@
 #SBATCH --cpus-per-task=4
 #SBATCH --gres=gpu:1
 #SBATCH --exclude=n0143.savio3,n0144.savio3,n0215.savio3
-#SBATCH --time=06:00:00
+#SBATCH --time=12:00:00   # was 6 h: tail resweeps timed out on a busy queue (folding resumes per compound, so a longer limit only lets slow nodes finish)
 #SBATCH --job-name=bft_p1
 #SBATCH --output=/global/scratch/users/sergiomar10/boltzaff/slurm/logs/p1_%A_%a.out
 #SBATCH --error=/global/scratch/users/sergiomar10/boltzaff/slurm/logs/p1_%A_%a.err
