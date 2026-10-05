@@ -141,7 +141,7 @@ statistic is meaningful yet (with 5 targets the sign test cannot reach p < 0.05;
 ## Pipeline progress
 
 <!-- PROGRESS:START -->
-Pipeline progress as of 2026-10-03 12:18: 5 of 8 targets finished; 16 GPUs running.
+Pipeline progress as of 2026-10-04 17:40: 5 of 8 targets finished; 18 GPUs running.
 
 | Target | Library | Pass-1 folded | Pass-2 cached | Scored arms | Table 2 | Stage | Tasks running / pending (held) |
 |---|---|---|---|---|---|---|---|
@@ -149,10 +149,10 @@ Pipeline progress as of 2026-10-03 12:18: 5 of 8 targets finished; 16 GPUs runni
 | 504329 | 49,982 | 49,973 (100%) | 49,973 (100%) | 16/16 | yes | done | 0 / 0 |
 | 743445 | 49,995 | 49,995 (100%) | 49,995 (100%) | 16/16 | yes | done | 0 / 0 |
 | 485317 | 49,980 | 49,976 (100%) | 49,976 (100%) | 16/16 | yes | done | 0 / 0 |
-| 2097 | 49,915 | 49,178 (99%) | 0 (0%) | 0/16 | no | Pass-1 running | 11 / 0 |
+| 2097 | 49,915 | 49,889 (100%) | 33,306 (67%) | 0/16 | no | Pass-2 running | 18 / 202 |
 | 493091 | 49,985 | 49,985 (100%) | 49,985 (100%) | 16/16 | yes | done | 0 / 0 |
-| 2650 | 49,882 | 19,912 (40%) | 0 (0%) | 0/16 | no | Pass-1 running, waiting for GPUs | 0 / 68 |
-| 588549 | 49,987 | 17,426 (35%) | 0 (0%) | 0/16 | no | Pass-1 running | 5 / 18 |
+| 2650 | 49,882 | 26,407 (53%) | 0 (0%) | 0/16 | no | Pass-1 running, waiting for GPUs | 0 / 18 |
+| 588549 | 49,987 | 19,541 (39%) | 0 (0%) | 0/16 | no | Pass-1 running, waiting for GPUs | 0 / 9 |
 
 Regenerate with `python pipeline_local/progress.py --readme`.
 <!-- PROGRESS:END -->

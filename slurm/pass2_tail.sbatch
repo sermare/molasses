@@ -9,7 +9,7 @@
 #SBATCH --nodes=1
 #SBATCH --cpus-per-task=4
 #SBATCH --gres=gpu:1
-#SBATCH --exclude=n0143.savio3,n0144.savio3,n0215.savio3
+#SBATCH --exclude=n0143.savio3,n0144.savio3,n0215.savio3,n0176.savio3
 #SBATCH --time=03:00:00
 #SBATCH --output=/global/scratch/users/sergiomar10/boltzaff/slurm/logs/p2tail_%A_%a.out
 set -eo pipefail

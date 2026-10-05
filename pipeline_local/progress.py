@@ -33,13 +33,17 @@ def pass1_ids(t):
 
 
 def pass2_count(t):
-    """Number of compounds with a Pass-2 prediction folder (one per chunk directory; tail repair folders are copied back into their chunk)."""
-    base = RUNS / t / "outputs_affcache"; n = 0
-    for c in list_dirs(base):
-        if not c.startswith("chunk_"): continue
+    """Number of compounds with a FINISHED Pass-2 result (affinity_embeddings_<id>.npz present), not just a prediction folder: a folder exists
+    before its files are written, so counting folders overstated progress (2097 showed 100% at 67%)."""
+    base = RUNS / t / "outputs_affcache"; chunks = [c for c in list_dirs(base) if len(c) == 9 and c.startswith("chunk_")]
+    def one(c):
+        n = 0
         for r in list_dirs(base / c):
-            if r.startswith("boltz_results_"): n += len(list_dirs(base / c / r / "predictions"))
-    return n
+            if r.startswith("boltz_results_"):
+                P = base / c / r / "predictions"
+                n += sum(1 for i in list_dirs(P) if os.path.exists(P / i / f"affinity_embeddings_{i}.npz"))
+        return n
+    with ThreadPoolExecutor(max_workers=16) as ex: return sum(ex.map(one, chunks))
 
 
 def queue():
