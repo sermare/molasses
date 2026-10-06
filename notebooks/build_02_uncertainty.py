@@ -338,6 +338,92 @@ for t in TARGETS:
             ax.set_title(f"{nm}: {'ACTIVE' if d['y'][i] else 'inactive'}  p={d['pm'][i]:.2f}  SD={d['sd'][i]:.3f}", fontsize=8)
     fig.suptitle(f"Fig 19. target {t}: top picks by seed agreement", fontsize=11); plt.tight_layout(rect=[0, 0, 1, .95]); plt.show()'''),
 
+ md("## Part 8b. Uncertainty and similarity to the training set (Tanimoto)\n"
+    "**Question.** Does the head-FT model know less about compounds that look unlike its 300 training compounds? Similarity is the highest ECFP4 Tanimoto (2048 bits, radius 2) of an evaluation compound to any compound of the N=300 training set (`tc_all`; the N=40 and N=100 sets are nested inside it) or to the training actives only (`tc_act`).\n\n"
+    "**Why ask.**\n"
+    "- Fine-tuning moves a pretrained head using 300 labelled compounds. The five seeds share the data and the starting weights and differ only in the random training order. Close to the training data the output is pinned by those labels, so the seeds should agree; far from it nothing constrains the output except seed-specific drift. So cross-seed SD should fall as similarity rises (the usual applicability-domain idea).\n"
+    "- Parts 2 and 5 asked whether uncertainty tells us which picks to trust. Similarity to the training set is a cheap, label-free candidate explanation for why uncertainty varies.\n"
+    "- README finding 3 says the head-FT gain concentrates in actives that resemble the training actives. The same mechanism predicts that picks near the training set are both more stable and more often correct (Fig 22).\n\n"
+    "**Traps and how they are handled.**\n"
+    "- SD grows with the score (Fig 1), and the training set is the top 300 of Boltz's own ranking, so similar compounds tend to score high too. A raw correlation would partly re-measure the score. We therefore use the partial rank correlation with the score removed (Fig 20) and a fixed score band, the top 5% (Fig 21).\n"
+    "- Control: No-FT never saw the training compounds. Its two-head disagreement should not fall with similarity to them. If it does, similarity only marks chemistry that is easy for the base model, not what the fine-tuned head learned.\n"
+    "- Tanimoto on ECFP4 is a crude proxy for distance in the head's own embedding space, and cross-seed SD measures seed instability, not bias: a stable seed-unanimous wrong pick has SD near zero.\n"
+    "- Intervals: bootstrap over compounds (200 resamples), ranks computed once on the full sample; compounds from one chemical series are not independent, so the intervals are probably too narrow."),
+ code('''import bft_uncertainty_sim as bus
+TC = {}
+for t in R:
+    try: TC[t] = bus.tc_train(t)
+    except Exception as e: print(f"{SHORT[t]}: similarity step failed: {type(e).__name__}: {e}")
+rows = []
+for t in TC:
+    x = TC[t].reindex(D[t]["S"].id.values); D[t]["tc_all"] = x.tc_all.values; D[t]["tc_act"] = x.tc_act.values
+    rows.append(dict(target=SHORT[t], n_eval=len(x), median_tc_all=np.nanmedian(x.tc_all), share_tc_all_ge_0_4=np.nanmean(x.tc_all >= .4), share_tc_all_ge_0_6=np.nanmean(x.tc_all >= .6),
+                     median_tc_act=np.nanmedian(x.tc_act) if x.tc_act.notna().any() else np.nan, share_tc_act_ge_0_5=np.nanmean(x.tc_act >= .5) if x.tc_act.notna().any() else np.nan))
+display(pd.DataFrame(rows).round(3).set_index("target"))
+for t in TARGETS:
+    if t not in TC: print("pending:", t, "-", PEND.get(t, "similarity not computed"))'''),
+ md("### Fig 20. Partial rank correlation between uncertainty and similarity, with the score removed\n"
+    "Each dot is one target, bars are 95% bootstrap intervals over compounds. Negative = more similar to the training set means less uncertain. The third row is the No-FT control (two-head disagreement of the base model, score = No-FT probability)."),
+ code('''MEAS3 = [("sd", "cross-seed SD (head-FT)", "pm"), ("dis_ft", "two-head disagreement (head-FT)", "pm"), ("dis0", "two-head disagreement (No-FT, control)", "p0")]
+SIMS = [("tc_all", "nearest training compound"), ("tc_act", "nearest training active")]
+PC = []
+for t in TC:
+    d = D[t]
+    for key, lab, sk in MEAS3:
+        for simk, siml in SIMS:
+            r, (lo, hi) = bus.boot_partial(d[key], d[simk], d[sk]); PC.append(dict(target=SHORT[t], measure=lab, similarity=siml, partial_rho=r, lo=lo, hi=hi))
+PC = pd.DataFrame(PC); display(PC.round(3))
+fig, axes = plt.subplots(1, 2, figsize=(14, 4.8), sharey=True)
+for ax, (simk, siml) in zip(axes, SIMS):
+    sub = PC[PC.similarity == siml]
+    for i, (key, lab, sk) in enumerate(MEAS3):
+        for j, t in enumerate(TC):
+            r = sub[(sub.target == SHORT[t]) & (sub.measure == lab)]
+            if r.empty or not np.isfinite(r.partial_rho.iloc[0]): continue
+            r = r.iloc[0]; yy = i + (j - (len(TC) - 1) / 2) * 0.12
+            ax.errorbar(r.partial_rho, yy, xerr=[[r.partial_rho - r.lo], [r.hi - r.partial_rho]], fmt="o", color=TCOL[t], capsize=2, ms=5, label=SHORT[t] if i == 0 else None)
+    ax.axvline(0, color=BLK, lw=.8); ax.set_yticks(range(3)); ax.set_yticklabels([m[1] for m in MEAS3], fontsize=8); ax.set_xlabel(f"partial Spearman rho(uncertainty, Tanimoto to {siml} | score)")
+    ax.set_title(f"similarity = {siml}", fontsize=10)
+axes[0].invert_yaxis(); axes[0].legend(fontsize=8, loc="lower left"); fig.suptitle("Fig 20. Uncertainty vs similarity to the training set, score removed", fontsize=12); plt.tight_layout(rect=[0, 0, 1, .94]); plt.show()'''),
+ md("### Fig 21. The same question inside a fixed score band (top 5%)\n"
+    "Compounds in the top 5% by score (FT seed-mean for the blue line, No-FT for the grey control) are cut into five equal-count bins of similarity to the nearest training compound. Each point is the bin's median uncertainty divided by the lowest-similarity bin's median, with a 95% bootstrap interval; below 1 means more certain than the least similar compounds. The y axis starts at 0."),
+ code('''def band_curve(u, tc, s, frac=0.05, nb=5, B=200, seed=0):
+    k = int(frac * len(s)); idx = np.argsort(-s)[:k]; idx = idx[np.isfinite(tc[idx]) & np.isfinite(u[idx])]
+    q = pd.qcut(tc[idx], nb, labels=False, duplicates="drop"); rng = np.random.default_rng(seed); mid, med, lo, hi = [], [], [], []
+    for b in sorted(set(q)):
+        v = u[idx][q == b]; bs = np.median(v[rng.integers(0, len(v), (B, len(v)))], axis=1)
+        mid.append(np.median(tc[idx][q == b])); med.append(np.median(v)); lo.append(np.percentile(bs, 2.5)); hi.append(np.percentile(bs, 97.5))
+    return np.array(mid), np.array(med), np.array(lo), np.array(hi)
+def d21(ax, t):
+    d = D[t]
+    if "tc_all" not in d: raise Pend("similarity not computed")
+    for u, s, col, lab in ((d["sd"], d["pm"], OUR, "head-FT cross-seed SD"), (d["dis0"], d["p0"], NEU, "No-FT two-head disagreement (control)")):
+        mid, med, lo, hi = band_curve(u, d["tc_all"], s); ref = med[0]
+        ax.errorbar(mid, med / ref, yerr=[(med - lo) / ref, (hi - med) / ref], marker="o", color=col, capsize=2, label=lab)
+    ax.axhline(1, color=BLK, lw=.7, ls="--"); ax.set_ylim(0, None); ax.set_xlabel("median Tanimoto to nearest training compound (bin)", fontsize=8); ax.set_ylabel("median uncertainty / lowest-similarity bin", fontsize=8); ax.legend(fontsize=6)
+panels(d21, "Fig 21. Uncertainty vs similarity inside the top-5% score band", figsize=(18, 8.5))'''),
+ md("### Fig 22. Are picks near the training actives more often correct?\n"
+    "Top-1% picks of No-FT (grey) and of the head-FT seed-mean (blue), split by the pick's highest Tanimoto to a training active. Bars: share of picks that are active (Wilson 95% interval), with the number of picks above; dashed line: the library's active rate. The y axis starts at 0."),
+ code('''PREC = {}
+def d22(ax, t):
+    d = D[t]
+    if "tc_act" not in d or not np.isfinite(d["tc_act"]).any(): raise Pend("no training actives, or similarity not computed")
+    y = d["y"]; k = int(np.ceil(0.01 * len(y))); tc = d["tc_act"]; labs = ["< 0.3", "0.3 - 0.5", ">= 0.5"]
+    for q, (sc, col, lab) in enumerate(((d["p0"], NEU, "No-FT top 1%"), (d["pm"], OUR, "head-FT top 1% (5-seed mean)"))):
+        top = np.argsort(-sc, kind="stable")[:k]; top = top[np.isfinite(tc[top])]; b = np.digitize(tc[top], [0.3, 0.5])
+        for i in range(3):
+            m = b == i; n = int(m.sum())
+            if n == 0: continue
+            a = int(y[top][m].sum()); p = a / n; lo, hi = wilson(a, n); x = i + (q - .5) * .36; PREC[(t, lab, labs[i])] = (a, n)
+            ax.bar(x, p, .34, color=col, label=lab if i == 0 else None); ax.errorbar(x, p, yerr=[[p - lo], [hi - p]], color=BLK, capsize=2); ax.text(x, hi + .01, f"n={n}", ha="center", fontsize=6)
+    ax.axhline(R[t]["rate"], color=BLK, ls="--", lw=.7); ax.set_ylim(0, None); ax.set_xticks(range(3)); ax.set_xticklabels(labs, fontsize=8); ax.set_xlabel("pick's highest Tanimoto to a training active", fontsize=8); ax.set_ylabel("share of picks that are active", fontsize=8); ax.legend(fontsize=6)
+panels(d22, "Fig 22. Precision of the top-1% picks by similarity to the training actives", figsize=(18, 8.5))'''),
+ md("**How to read Part 8b.** The four outcomes below are decided by the computed statements at the end of the notebook, not by this text.\n"
+    "- SD falls with similarity (Fig 20, negative, interval below 0) and the No-FT control does not: consistent with the fine-tuned head being pinned by its training data. It is evidence about stability near training data, not proof that predictions there are right: check Fig 22.\n"
+    "- SD falls with similarity and the control falls too: similarity mostly marks chemistry that is easy for the base model; it is not a fine-tuning effect.\n"
+    "- No relation (interval includes 0): similarity to the 300 training compounds is not what makes the seeds disagree, and the SD of Parts 2 and 5 comes from elsewhere (for example the score level or pose confidence, Part 7).\n"
+    "- Precision rising with similarity to the training actives (Fig 22) while uncertainty does not change: the model is more often right near the training actives without being more sure, so SD cannot flag it."),
+
  md("## Part 9. Per-target summary table (analysis 6)\n"
     "Paper columns are fixed paper values (trainer_control.csv); all other columns are computed here. Pooled row = across-target mean (targets as units)."),
  code('''rows = []
@@ -401,6 +487,27 @@ for t in R:
 print("\\nLimits: bootstraps resample compounds only (the 5 seeds are the only model-side replicates; the training set of each budget is fixed, so training-set sampling variance is not included); "
       "RR groups and vote sets are held fixed in the bootstrap; Jaccard overlaps have no resampling CI (range over 10 seed pairs shown); pose-confidence rows exist only for targets with qc.csv and may cover a subset of compounds; "
       "many comparisons were made (5 measures x targets, plus per-panel p-values): only the Bonferroni-adjusted intervals in Fig 4 should be read as tests.")'''),
+ code('''print("(6) Uncertainty and similarity to the training set (Part 8b): partial Spearman rho with the score removed, 95% bootstrap interval over compounds.")
+def sgn(lo, hi):
+    d = "falls with similarity" if hi < 0 else "rises with similarity" if lo > 0 else "no resolvable relation"
+    return d + (" (but negligible in size: |rho| < 0.1)" if max(abs(lo), abs(hi)) < 0.1 and d != "no resolvable relation" else "")
+for t in TC:
+    sub = PC[(PC.target == SHORT[t]) & (PC.similarity == "nearest training compound")]
+    if sub.empty: continue
+    parts = [f"{r.measure.split(' (')[0]}{' [No-FT control]' if 'control' in r.measure else ''}: rho={r.partial_rho:+.2f} [{r.lo:+.2f},{r.hi:+.2f}] {sgn(r.lo, r.hi)}" for r in sub.itertuples()]
+    print(f"  {SHORT[t]}: " + "; ".join(parts))
+    sd = sub[sub.measure.str.startswith("cross-seed")].iloc[0]; ct = sub[sub.measure.str.contains("control")].iloc[0]
+    big = max(abs(sd.lo), abs(sd.hi)) >= 0.1
+    reading = ("cross-seed SD falls with similarity and the No-FT control does not: consistent with a head pinned by its training data" if sd.hi < 0 and not ct.hi < 0 and big else
+               "cross-seed SD falls with similarity but the No-FT control falls too: similarity marks chemistry that is easy for the base model" if sd.hi < 0 and ct.hi < 0 and big else
+               "cross-seed SD does not fall with similarity in any meaningful amount (|rho| < 0.1 or wrong sign)")
+    print(f"      reading: {reading}.")
+print("  Top-1% picks that are active / picks, by the pick's highest Tanimoto to a training active:")
+for t in TC:
+    for lab in ("No-FT top 1%", "head-FT top 1% (5-seed mean)"):
+        cells_ = [f"{b}: {PREC[(t, lab, b)][0]}/{PREC[(t, lab, b)][1]}" for b in ("< 0.3", "0.3 - 0.5", ">= 0.5") if (t, lab, b) in PREC]
+        if cells_: print(f"    {SHORT[t]} {lab}: " + "; ".join(cells_))
+print("  Limits: ECFP4 Tanimoto is a crude proxy for the head's embedding distance; compounds of one series are not independent, so intervals are probably too narrow; SD measures seed instability, not correctness.")'''),
 ]
 nb = nbf.v4.new_notebook(); nb.cells = cells
 nb.metadata = {"kernelspec": {"name": "boltzba", "display_name": "Python (boltzba)", "language": "python"}, "language_info": {"name": "python"}}
