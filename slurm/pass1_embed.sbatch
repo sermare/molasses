@@ -44,7 +44,7 @@ if [ "$NTODO" -eq "$NALL" ]; then
     --out_dir "$OUT_DIR" \
     --cache "$BOLTZ_CACHE" --model boltz2 \
     --devices 1 --accelerator gpu \
-    --num_workers 2 --preprocessing-threads 1 \
+    --num_workers 2 --preprocessing-threads 4 \
     --write_embeddings_cropped --skip_affinity_prediction --override
 else
   # partial chunk: fold only the missing compounds into a separate '<chunk>_tail_<job>' results folder.
@@ -59,7 +59,7 @@ else
     --out_dir "$TAILOUT" \
     --cache "$BOLTZ_CACHE" --model boltz2 \
     --devices 1 --accelerator gpu \
-    --num_workers 2 --preprocessing-threads 1 \
+    --num_workers 2 --preprocessing-threads 4 \
     --write_embeddings_cropped --skip_affinity_prediction --override
   mkdir -p "$PRED"
   for d in "$TAILOUT/boltz_results_$TAILNAME/predictions"/*/; do
@@ -67,5 +67,13 @@ else
     if [ -d "$PRED/$id" ] && [ ! -L "$PRED/$id" ]; then rm -rf "$PRED/$id"; fi   # drop a stale partial folder
     ln -sfn "$(readlink -f "$d")" "$PRED/$id"
   done
+fi
+# Pre-emption on lowprio kills boltz, which exits 0, so Slurm would record COMPLETED and the work would be lost until the driver notices. If most of what
+# this task should have folded is still missing, requeue the task (at most 8 times); a handful of compounds that never fold is normal and is ignored.
+NLEFT=$(for y in "$CHUNK_DIR"/*.yaml; do id=$(basename "$y" .yaml); [ -e "$PRED/$id/embeddings_${id}.npz" ] || echo x; done | wc -l)
+LIM=$(( NTODO / 10 )); [ "$LIM" -lt 5 ] && LIM=5
+if [ "$NLEFT" -gt "$LIM" ] && [ "${SLURM_RESTART_COUNT:-0}" -lt 8 ]; then
+  echo "[p1] $NLEFT compounds still missing after boltz exited (pre-empted?); requeueing task $SLURM_ARRAY_TASK_ID (restart ${SLURM_RESTART_COUNT:-0})"
+  scontrol requeue "$SLURM_JOB_ID"; exit 0
 fi
 echo "[p1] done task=$SLURM_ARRAY_TASK_ID $(date)"

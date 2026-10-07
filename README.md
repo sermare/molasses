@@ -332,5 +332,74 @@ The earlier single-target notebooks (00-19, written while only 588689 had finish
 Analysis scripts behind them are in `pipeline_local/` (`bft_common.py` (shared loader), `bft_replication.py`, `bft_uncertainty.py`, `bft_rerank.py`, `bft_cliffs.py`, `bft_training.py`, `prep_cliffs.py`, `cliff_pairs.py`, `cliff_scores_eval.py`, `seed_scores_eval.py`,
 `ft_vs_noft_similar_pairs.py`, `eval_variants.py`, `pose_density_residue.py`, `decoy_inputs.py`, `decoy_harvest.py`).
 
+---
+
+## GPU compute and parallelisation
+
+### How the work is parallelised
+- Task parallelism only: Slurm job arrays, where every task is an independent job on **one GPU of one node** (`--nodes=1 --gres=gpu:1`, 4 CPUs, 32 GB). There is no multi-node or multi-GPU training, no data parallelism and no communication between tasks (boltz runs with `--devices 1`). All 8,440 GPU jobs from 2026-09-20 to 2026-10-06 requested exactly one GPU.
+- The nodes have 2 to 8 GPUs each; several of our single-GPU jobs (and other users' jobs) can share a node. That packing is Slurm's placement, not something the scripts ask for, and our scripts do not request a GPU type.
+
+| Stage | Unit of work | Tasks per target | One task does |
+|---|---|---|---|
+| Pass-1 (fold poses) | chunk of 350 compounds | 143 | folds about 350 compounds |
+| Pass-2 (affinity cache) | the same 143 chunks | 143 | reuses the poses, writes affinity embeddings |
+| Head-FT training | one (budget, seed) arm | 15 (3 budgets x 5 seeds) | trains one head, then scores it |
+| Base scoring | whole evaluation set | 1 | scores No-FT |
+| Scoring | evaluation chunk of 1,000 | 50 per arm | one job loops over its 50 chunks in order (about 7 minutes each); `slurm/score_chunk.sbatch` splits the tail of a slow arm across GPUs |
+
+- Repair jobs use the same pattern with small chunks (about 14 to 60 compounds). CPU-only driver jobs submit and resubmit the arrays (`slurm/driver.sbatch`, `slurm/pipeline_driver_v3.sh`).
+- Queue: `savio3_gpu`, QOS `savio_lowprio` throughout (low priority, pre-emptible), array concurrency capped at 30-60 tasks.
+
+### GPUs on the partition (`sinfo`, 2026-10-06)
+| GPU type | Nodes | GPUs per node | GPUs in total |
+|---|---|---|---|
+| A40 | 21 | 2 (16 nodes) or 4 (5 nodes) | 52 |
+| GTX 2080 Ti | 9 | 4 | 36 |
+| TITAN | 6 | 2, 4, 7, 7, 8, 8 | 36 |
+| V100 | 2 | 2 | 4 |
+
+Totals include nodes that were drained or reserved at the time. Which type a job got depended only on where Slurm placed it.
+
+### GPU-hours used (Slurm accounting, 2026-09-20 to 2026-10-06; `pipeline_local/gpu_hours.py`)
+GPU-hours = run time x GPUs allocated, summed over every GPU job, including failed, pre-empted and cancelled ones. Total **5,245 GPU-hours** over 8,435 jobs. 2650 and 588549 were still running, so their rows are partial.
+
+| Stage | GPU-hours | Share |
+|---|---|---|
+| Pass-1 folding | 3,191 | 61% |
+| Pass-2 affinity cache | 1,110 | 21% |
+| Training-variant arms (balanced, hard negatives, budgets; 588689) | 476 | 9% |
+| Head-FT train + score | 265 | 5% |
+| Early head-FT runs, decoy rescore, base scoring | about 203 | 4% |
+
+| Target | Pass-1 | Pass-2 | Train + score | Total |
+|---|---|---|---|---|
+| 504329 | 256 | 166 | 98 | 520 |
+| 493091 | 227 | 186 | 63 | 476 |
+| 485317 | 151 | 158 | 30 | 339 |
+| 743445 | 209 | 109 | 11 | 329 |
+| 2097 | 897 | 289 | 82 | 1,268 |
+| 2650 (partial) | 432 | 0 | 0 | 432 |
+| 588549 (partial) | 687 | 0 | 0 | 687 |
+| 588689 and early jobs | not separable (older job names carry no target tag; 1,195 GPU-hours in all, including the variant arms and decoy rescore) | | | |
+
+| GPU type | GPU-hours | Jobs |
+|---|---|---|
+| TITAN | 2,352 | 1,730 |
+| GTX 2080 Ti | 1,818 | 4,105 |
+| A40 | 930 | 2,301 |
+| V100 | 145 | 299 |
+
+- A clean target costs about 330 to 520 GPU-hours; 2097 cost about three times that because of stalls, repeated resubmits, a bad node and repairs.
+- Waste: 1,877 GPU-hours (36%) were in jobs that did not end COMPLETED. Time-outs are the largest part (355 jobs, 1,370 GPU-hours, 26% of the total), then cancelled (266), failed (165; 3,275 jobs that died in seconds) and pre-empted (74).
+- Folding is the cost; training and scoring are cheap by comparison. Speed per GPU type was not compared.
+
+### Operational notes (what broke and how it was handled)
+- Bad node `n0176`: Pass-1 tasks hung at 0% or ran out of memory there; it is excluded in every job template.
+- Pre-emption on the low-priority queue kills boltz, which exits cleanly, so Slurm recorded such tasks as COMPLETED and the work was lost. `slurm/pass1_embed.sbatch` now checks its own output and requeues itself (up to 8 times) and uses 4 preprocessing threads.
+- 2026-10-06: the Boltz-2 weights folder (`/clusterfs/nilah/sergio/RBX1/weights`, which `boltz_cache` linked to) disappeared. The two public checkpoints were re-downloaded from the `boltz-community/boltz-2` Hugging Face repository into `boltz_weights_redownload/` and the CCD molecule archive `mols.tar` was re-extracted. Check against the head-FT checkpoints trained earlier: 5,033 of 5,539 tensors are bit-identical and all 506 that differ are in the affinity module that fine-tuning changes; the confidence checkpoint matches the affinity one on all 5,019 shared non-affinity tensors.
+- Restart helpers: `slurm/resweep_pass1.py` (relink finished tail folds, list incomplete chunks, submit a resweep), `slurm/restart_p1.sh`.
+
+
 
 molecule size bias from , there fore increasing contacts -> boltz2 affinity head ., rosseta style energy fxn 
