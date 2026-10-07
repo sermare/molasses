@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Write construct seq files + BoltzFT-schema results CSVs for the 7 non-588689 targets.
+"""Write construct seq files + BoltzFT-schema results CSVs for all 8 targets (588689 reads its construct from inputs/constructs).
 
 Sequences: 5 from reference PDBs (Boltzina Table 1), 2 predicted-holo targets from NCBI GI.
 Cross-checked via PubChem: 493248->ALR==3MBG, 588689->NS5==3EVG.
@@ -7,8 +7,9 @@ Cross-checked via PubChem: 493248->ALR==3MBG, 588689->NS5==3EVG.
 from pathlib import Path
 import pandas as pd
 
-ROOT = Path("/global/scratch/users/sergiomar10/boltzaff")
+ROOT = Path(__file__).resolve().parents[1]
 DATA = ROOT / "data"
+INPUTS = ROOT / "inputs"
 
 SEQS = {
  # target-folder : (source, sequence)
@@ -26,22 +27,28 @@ SEQS = {
   "MDSNTMSSFQVDCFLWHIRKRFADNGLGDAPFLDRLRRDQKSLKGRGNTLGLDIETATLVGKQIVEWILKEESSETLRMTIASVPTSRYLSDMTLEEMSRDWFMLMPRQKIIGPLCVRLDQAIMEKNIVLKANFSVIFNRLETLILLRAFTEEGAIVGEISPLPSLPGHTYEDVKNAVGVLIGGLEWNGNTVRVSENIQRFAWRNCDENGRPSLPPEQK"),
  "624273-588549": ("FadD28/Mtb(GI1781172)",
   "MSVRSLPAALRACARLQPHDPAFTFMDYEQDWDGVAITLTWSQLYRRTLNVAQELSRCGSTGDRVVISAPQGLEYVVAFLGALQAGRIAVPLSVPQGGVTDERSDSVLSDSSPVAILTTSSAVDDVVQHVARRPGESPPSIIEVDLLDLDAPNGYTFKEDEYPSTAYLQYTSGSTRTPAGVVMSHQNVRVNFEQLMSGYFADTDGIPPPNSALVSWLPFYHDMGLVIGICAPILGGYPAVLTSPVSFLQRPARWMHLMASDFHAFSAAPNFAFELAARRTTDDDMAGRDLGNILTILSGSERVQAATIKRFADRFARFNLQERVIRPSYGLAEATVYVATSKPGQPPETVDFDTESLSAGHAKPCAGGGATSLISYMLPRSPIVRIVDSDTCIECPDGTVGEIWVHGDNVANGYWQKPDESERTFGGKIVTPSPGTPEGPWLRTGDSGFVTDGKMFIIGRIKDLLIVYGRNHSPDDIEATIQEITRGRCAAISVPGDRSTEKLVAIIELKKRGDSDQDAMARLGAIKREVTSALSSSHGLSVADLVLVAPGSIPITTSGKVRRGACVEQYRQDQFARLDA"),
+ "588689": ("3EVG/NS5-MTase", (INPUTS / "constructs" / "588689_seq.txt").read_text().strip()),
 }
 
 
-def main() -> None:
+def main(data_dir: Path = DATA, out_dir: Path = DATA) -> None:
+    out_dir.mkdir(parents=True, exist_ok=True)
     for tgt, (src, seq) in SEQS.items():
-        (DATA / f"{tgt}_seq.txt").write_text(seq + "\n")
-        df = pd.read_csv(DATA / "mf-pcba_test" / f"{tgt}.csv")
+        (out_dir / f"{tgt}_seq.txt").write_text(seq + "\n")
+        df = pd.read_csv(data_dir / "mf-pcba_test" / f"{tgt}.csv")
         out = pd.DataFrame({
             "CID": df["CID"].astype(int),
             "neut-smiles": df["neut-smiles"],
             "Active_v2": df["target_active_v2"].astype(bool).astype(int),
             "affinity_probability_binary": df["score_boltz2"],
         })
-        out.to_csv(DATA / f"{tgt}_results.csv", index=False)
+        out.to_csv(out_dir / f"{tgt}_results.csv", index=False)
         print(f"{tgt:16s} src={src:34s} len={len(seq):4d} rows={len(out):6d} actives={int(out.Active_v2.sum())}")
 
 
 if __name__ == "__main__":
-    main()
+    import argparse
+    ap = argparse.ArgumentParser(description="Write construct seq files and BoltzFT-schema results CSVs for all 8 targets from data/mf-pcba_test/<target>.csv")
+    ap.add_argument("--data-dir", type=Path, default=DATA, help="folder that contains mf-pcba_test/ (default: <repo>/data)")
+    ap.add_argument("--out-dir", type=Path, default=None, help="where to write <target>_seq.txt and <target>_results.csv (default: --data-dir)")
+    a = ap.parse_args(); main(a.data_dir, a.out_dir or a.data_dir)

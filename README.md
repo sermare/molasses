@@ -405,18 +405,37 @@ GPU-hours = run time x GPUs allocated, summed over every GPU job, including fail
 
 ## Reproducing this work, tests, and how it differs from the upstream code
 
-### Is it ready for someone else to reproduce? (status 2026-10-06)
+### Quick start on another machine or cluster
+```bash
+git clone https://github.com/sermare/molasses.git boltzaff && cd boltzaff
+scripts/bootstrap.sh --data-zip /path/to/mf-pcba_test.zip      # code at pinned commits, weights, inputs, conda environments
+python scripts/relocate.py --conda-sh ~/miniconda3/etc/profile.d/conda.sh \
+    --account YOUR_ACCOUNT --gpu-partition YOUR_GPU_PARTITION --cpu-partition YOUR_CPU_PARTITION --qos YOUR_QOS --exclude ""
+pip install -r requirements-test.txt && pytest                  # 55 tests, no GPU needed
+```
+- `scripts/bootstrap.sh` (use `--dry-run` to see the steps, `--skip-weights`, `--skip-env` to skip the big downloads):
+  1. clones `ohuelab/BoltzFT` at `c7d5616` and applies `patches/BoltzFT_local_changes.patch`;
+  2. clones `molecularinformatics/Boltz2_affinity` at `bc06a0b` and applies the authors' patch;
+  3. downloads the Boltz-2 weights (`boltz2_conf.ckpt`, `boltz2_aff.ckpt`, `mols.tar` from Hugging Face `boltz-community/boltz-2`), checks the sizes against the server and extracts `mols.tar` completely (an interrupted extraction makes every fold fail with `KeyError: 'THR'`; the script verifies the entry count and `THR.pkl`);
+  4. unpacks the MF-PCBA zip (from the Boltzina v1.0.1 release; pass it with `--data-zip`, a path or a URL; the download address is not recorded in this repo), writes `data/<target>_results.csv` and `data/<target>_seq.txt` with `pipeline_local/setup_targets.py`, and copies the exact MSAs from `inputs/msa/`;
+  5. creates the conda environments from `envs/*.yml`.
+- `scripts/relocate.py` rewrites the cluster-specific values that the original code hard-codes (root path, conda path, Slurm account, partitions, QOS, excluded nodes) in the shell, Slurm, Python and notebook-code files of your clone. `--check` lists anything left, `--dry-run` shows what would change. Do not commit the relocated files back; submit Slurm jobs from the repository root.
+- Shipped inputs (`inputs/`): the 8 reconstructed construct sequences and the exact MSAs used (gzipped), so the runs do not depend on the ColabFold server returning the same alignments; `pipeline_local/gen_msa.py` regenerates them.
+- Compute: Pass-1 folding is about 26 s per compound; a clean target cost 330 to 520 GPU-hours (section "GPU compute and parallelisation" above).
+
+What was verified: a bootstrap from an empty folder (code and data steps) produced `BoltzFT` and `Boltz2_affinity` trees and all 8 targets' `*_results.csv`, `*_seq.txt` and `*_msa.csv` that are byte-identical to the ones used for the runs reported here. Not verified end to end on a second machine: the weights download and environment creation steps of the script (the same files were downloaded and checked by hand), and a full pipeline run on a different cluster.
+
+### Status and known gaps (2026-10-06)
 - Done: the pipeline has run end to end on six of the eight targets, and every number in the findings above comes from the executed notebooks (outputs are saved in the `.ipynb` files).
-- Not done: 2650 and 588549 are still running; `results/` (scores, caches, checkpoints) is not in git, so the notebooks must be re-run on your own results to regenerate anything.
-- Known gaps for running it elsewhere (not fixed yet, because the scripts are in use by running jobs; the fix is one configurable root path):
-  - 140 tracked files hard-code `/global/scratch/users/sergiomar10/boltzaff` and 44 hard-code `/clusterfs/nilah/...` (conda, weights). Set the root in `env.sh`, `pipeline_local/bft_common.py` and the Slurm headers.
-  - The Slurm headers are specific to Savio (account `co_nilah`, partition `savio3_gpu`, QOS `savio_lowprio`, excluded nodes).
-- Inputs you need: `ohuelab/BoltzFT` at commit `c7d5616` (with `patches/BoltzFT_local_changes.patch` applied); `molecularinformatics/Boltz2_affinity` at `bc06a0b` with the authors' patch (`BoltzFT/patches/boltz2_affinity.patch`; use this one to rebuild the fork: our `patches/Boltz2_affinity_local_changes.patch` is a `git diff` of tracked files only and omits the new file `src/boltz/data/crop_embeddings.py`); the MF-PCBA data from the Boltzina release; the Boltz-2 weights (`boltz2_conf.ckpt`, `boltz2_aff.ckpt`, `mols.tar`, public on Hugging Face under `boltz-community/boltz-2`).
-- Environments: `envs/boltzft.yml` and `envs/boltzba.yml` are exports of the two conda environments we used (`boltzft` is `boltzba` plus the fork installed with `pip install -e Boltz2_affinity --no-deps`; the export shows the fork as `boltz==2.2.1`, so install the fork over it). Steps are listed in "Pipeline (annotated steps)" above.
+- Not done: 2650 and 588549 are still running. `results/` (scores, caches, checkpoints) is not in git, so the notebooks must be re-run on your own results to regenerate anything; the figures and tables in this README are the record of ours.
+- The code still contains the original cluster values in the repository itself (140 files mention `/global/scratch/users/sergiomar10/boltzaff`, 44 mention the original conda path); they are a rewrite target for `scripts/relocate.py`, not yet a configuration file. Replacing them with a single configurable root is future work, to be done once the running jobs finish.
+- No container image is provided.
+- The authors' fork patch: use `BoltzFT/patches/boltz2_affinity.patch`. Our `patches/Boltz2_affinity_local_changes.patch` is a `git diff` of tracked files only and omits the new file `src/boltz/data/crop_embeddings.py`.
+- Environments: `envs/boltzft.yml` and `envs/boltzba.yml` are exports of the two conda environments we used (`boltzft` is `boltzba` plus the fork installed with `pip install -e Boltz2_affinity --no-deps`; the export shows the fork as `boltz==2.2.1`, so install the fork over it). Pipeline steps are listed in "Pipeline (annotated steps)" above.
 
 ### Tests
-- `pip install -r requirements-test.txt && pytest` runs 32 tests in about 3 seconds on a laptop (no GPU, Slurm or data). GitHub Actions (`.github/workflows/tests.yml`) runs them on every push, cloning the pinned BoltzFT commit.
-- Covered: the screening metrics (AP, EF, BEDROC) on perfect, random, worst and hand-built rankings; the cross-target statistics (geometric-mean ratio, t-interval, sign test with its minimum p-values 0.0625 at 5 targets and 0.03125 at 6, seed averaging before the ratio, spread table); the rank-correlation helpers behind the uncertainty-vs-similarity analysis; repository hygiene (every Python file compiles, every shell script parses, notebooks valid with no stored errors, no HTML, README links and figures exist, every finding has a figure or table); Slurm templates (single GPU, low priority, requeue, bad node excluded, Pass-1 self-requeue).
+- `pip install -r requirements-test.txt && pytest` runs 55 tests (a few seconds, plus about a minute for the relocation tests) on a laptop (no GPU, Slurm or data). GitHub Actions (`.github/workflows/tests.yml`) runs them on every push, cloning the pinned BoltzFT commit.
+- Covered: the screening metrics (AP, EF, BEDROC) on perfect, random, worst and hand-built rankings; the cross-target statistics (geometric-mean ratio, t-interval, sign test with its minimum p-values 0.0625 at 5 targets and 0.03125 at 6, seed averaging before the ratio, spread table); the rank-correlation helpers behind the uncertainty-vs-similarity analysis; the shipped inputs (construct lengths against the table above, each MSA's first row is its construct, `setup_targets.py` regenerates the inputs byte for byte when the MF-PCBA data is present); the relocation tool (removes every original site setting, breaks no script or notebook, leaves notebook outputs alone, idempotent); repository hygiene (every Python file compiles, every shell script parses, notebooks valid with no stored errors, no HTML, README links and figures exist, every finding has a figure or table); Slurm templates (single GPU, low priority, requeue, bad node excluded, Pass-1 self-requeue).
 - 11 of the tests need the authors' BoltzFT checkout (set `BOLTZFT=/path/to/BoltzFT`) and are skipped, not failed, without it.
 - Not covered: the GPU stages, Slurm behaviour, training, and the loaders that read cluster results (`bft_common.py` and the notebook builders).
 
