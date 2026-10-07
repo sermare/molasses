@@ -8,10 +8,10 @@ partial_spearman(u, tc, s): rank correlation between u and tc after removing the
 boot_partial(...): bootstrap interval over compounds (ranks are computed once on the full sample, then resampled)."""
 import numpy as np, pandas as pd
 from scipy.stats import rankdata
-import bft_common as bc, bft_rerank as br
 
 
 def tc_train(t):
+    import bft_common as bc, bft_rerank as br      # imported here so the pure statistics below can be tested without the cluster layout
     f = bc.AN / t / "tc_train.csv"
     if f.exists(): return pd.read_csv(f, index_col=0)
     from rdkit import DataStructs

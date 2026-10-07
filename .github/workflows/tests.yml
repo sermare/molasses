@@ -1,0 +1,16 @@
+name: tests
+on: [push, pull_request]
+jobs:
+  pytest:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.10" }
+      - run: pip install -r requirements-test.txt
+      - name: Fetch the authors' evaluation code (public, pinned)
+        run: |
+          git clone https://github.com/ohuelab/BoltzFT.git ../BoltzFT
+          git -C ../BoltzFT checkout c7d5616
+          echo "BOLTZFT=$GITHUB_WORKSPACE/../BoltzFT" >> "$GITHUB_ENV"
+      - run: pytest

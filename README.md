@@ -401,5 +401,39 @@ GPU-hours = run time x GPUs allocated, summed over every GPU job, including fail
 - Restart helpers: `slurm/resweep_pass1.py` (relink finished tail folds, list incomplete chunks, submit a resweep), `slurm/restart_p1.sh`.
 
 
+---
+
+## Reproducing this work, tests, and how it differs from the upstream code
+
+### Is it ready for someone else to reproduce? (status 2026-10-06)
+- Done: the pipeline has run end to end on six of the eight targets, and every number in the findings above comes from the executed notebooks (outputs are saved in the `.ipynb` files).
+- Not done: 2650 and 588549 are still running; `results/` (scores, caches, checkpoints) is not in git, so the notebooks must be re-run on your own results to regenerate anything.
+- Known gaps for running it elsewhere (not fixed yet, because the scripts are in use by running jobs; the fix is one configurable root path):
+  - 140 tracked files hard-code `/global/scratch/users/sergiomar10/boltzaff` and 44 hard-code `/clusterfs/nilah/...` (conda, weights). Set the root in `env.sh`, `pipeline_local/bft_common.py` and the Slurm headers.
+  - The Slurm headers are specific to Savio (account `co_nilah`, partition `savio3_gpu`, QOS `savio_lowprio`, excluded nodes).
+- Inputs you need: `ohuelab/BoltzFT` at commit `c7d5616` (with `patches/BoltzFT_local_changes.patch` applied); `molecularinformatics/Boltz2_affinity` at `bc06a0b` with the authors' patch (`BoltzFT/patches/boltz2_affinity.patch`; use this one to rebuild the fork: our `patches/Boltz2_affinity_local_changes.patch` is a `git diff` of tracked files only and omits the new file `src/boltz/data/crop_embeddings.py`); the MF-PCBA data from the Boltzina release; the Boltz-2 weights (`boltz2_conf.ckpt`, `boltz2_aff.ckpt`, `mols.tar`, public on Hugging Face under `boltz-community/boltz-2`).
+- Environments: `envs/boltzft.yml` and `envs/boltzba.yml` are exports of the two conda environments we used (`boltzft` is `boltzba` plus the fork installed with `pip install -e Boltz2_affinity --no-deps`; the export shows the fork as `boltz==2.2.1`, so install the fork over it). Steps are listed in "Pipeline (annotated steps)" above.
+
+### Tests
+- `pip install -r requirements-test.txt && pytest` runs 32 tests in about 3 seconds on a laptop (no GPU, Slurm or data). GitHub Actions (`.github/workflows/tests.yml`) runs them on every push, cloning the pinned BoltzFT commit.
+- Covered: the screening metrics (AP, EF, BEDROC) on perfect, random, worst and hand-built rankings; the cross-target statistics (geometric-mean ratio, t-interval, sign test with its minimum p-values 0.0625 at 5 targets and 0.03125 at 6, seed averaging before the ratio, spread table); the rank-correlation helpers behind the uncertainty-vs-similarity analysis; repository hygiene (every Python file compiles, every shell script parses, notebooks valid with no stored errors, no HTML, README links and figures exist, every finding has a figure or table); Slurm templates (single GPU, low priority, requeue, bad node excluded, Pass-1 self-requeue).
+- 11 of the tests need the authors' BoltzFT checkout (set `BOLTZFT=/path/to/BoltzFT`) and are skipped, not failed, without it.
+- Not covered: the GPU stages, Slurm behaviour, training, and the loaders that read cluster results (`bft_common.py` and the notebook builders).
+
+### How this differs from the upstream code
+| Component | Upstream | Our changes |
+|---|---|---|
+| `molecularinformatics/Boltz2_affinity` @ `bc06a0b` + authors' patch | the fork that the paper's training runs on | **none**: a clean checkout with the authors' patch applied has 0 differing lines against the tree we used |
+| `ohuelab/BoltzFT` @ `c7d5616` | the authors' pipeline (2,703 lines of Python and shell) | one file, `pipeline/build_ft_inputs_full.py`, +7/-1 lines: skip compounds that have no folded structure instead of failing |
+| This repo (additive) | none | about 13,000 lines: `pipeline_local/` 3,540, `slurm/` 1,591, notebook builders 7,870 |
+
+What the additions do (nothing in the model or the loss was changed):
+- Multi-seed head-FT: 5 seeds x 3 budgets per target (the paper trained each condition once), a resumable scoring wrapper, and seed-averaged statistics with spread.
+- Scale-out to 8 targets: Slurm job arrays and drivers, tail-only re-folding, repair of partial Pass-2 chunks, a watchdog for stalled arms, progress tables, and single-chunk scoring jobs.
+- Extra analyses not in the paper: leakage checks, uncertainty, similarity and cliff-pair analyses, pose localisation, training-set composition (588689), and the uncertainty-vs-Tanimoto section.
+
+Is it better? Not as a model: it is the authors' model and training recipe, and our effect sizes are smaller than the paper's (AP ratio at N=300 of x2.04 against the paper's x2.49 on the same six targets; smaller on five of six). What is added is replication across seeds and targets, controls, failure analysis, and a pipeline that can be resumed after pre-emption.
+
+
 
 molecule size bias from , there fore increasing contacts -> boltz2 affinity head ., rosseta style energy fxn 

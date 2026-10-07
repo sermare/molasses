@@ -11,7 +11,6 @@ warnings.filterwarnings("ignore")
 sys.path.insert(0, "/global/scratch/users/sergiomar10/boltzaff/pipeline_local")
 import numpy as np, pandas as pd
 from scipy.stats import rankdata
-import bft_common as bc
 
 READ = ["SD", "DR"]   # SD Z-score is a linear rescale of SD (identical rank correlations), so it is not repeated
 
@@ -29,6 +28,7 @@ def boot_diff(x, y1, y0, B=300, seed=0):
 
 
 def main():
+    import bft_common as bc      # imported here so rho() can be tested without the cluster layout
     ap = argparse.ArgumentParser(); ap.add_argument("--targets", nargs="*"); a = ap.parse_args()
     targets = a.targets or bc.done_targets("scores"); rows = []
     for t in targets:
