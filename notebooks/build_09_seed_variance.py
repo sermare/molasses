@@ -130,6 +130,21 @@ else:
     for ax in axs.ravel(): ax.axis("off")
     for ax, im, c in zip(axs.ravel(), imgs, caps): ax.imshow(im); ax.set_title(c, fontsize=7)
     plt.tight_layout(); plt.show()'''),
+ md("## 7. Similarity to the training set: it moves the prediction, not the disagreement\nElsewhere in this repository (notebooks 02 and 03) the benefit of fine-tuning follows the similarity to the training actives. Here the same similarity (highest ECFP4 Tanimoto to a training active, per compound) is compared with four outputs on the whole evaluation set: the fine-tuned score, the shift fine-tuning caused (head-FT minus No-FT logit), the rank gain (percentile after minus before; shown for actives and for inactives) and the across-seed variance of the logit. "
+    "All five seeds train on the same 300 compounds, so a shift caused by closeness to them is the same in every seed and is not disagreement. Spearman correlations."),
+ code('''from scipy.stats import spearmanr, rankdata
+lg = lambda p: np.log(np.clip(p, 1e-6, 1 - 1e-6) / (1 - np.clip(p, 1e-6, 1 - 1e-6))); rows = {}
+for t in bc.TARGETS:
+    if SH[t] not in TG: continue
+    S = bc.scores(t).set_index("id"); P = lg(S[[f"ft300_p{s}" for s in range(5)]].values); ft = P.mean(1); n0 = lg(S.noft_p.values); var = P.var(1)
+    sim = pd.read_csv(bc.AN / t / "tc_train.csv").set_index("Unnamed: 0").reindex(S.index).tc_act.values; y = S.label.values == 1
+    rk = lambda x: rankdata(x) / len(x); gain = rk(ft) - rk(n0); top = sim >= np.quantile(sim, .9); lowh = sim <= np.median(sim)
+    rows[SH[t]] = {"fine-tuned score": spearmanr(ft, sim)[0], "shift (head-FT minus No-FT logit)": spearmanr(ft - n0, sim)[0], "rank gain, actives": spearmanr(gain[y], sim[y])[0], "rank gain, inactives": spearmanr(gain[~y], sim[~y])[0],
+                   "across-seed variance (logit)": spearmanr(var, sim)[0], "active rate, top similarity decile / library rate": y[top].mean() / y.mean(), "active rate, bottom half / library rate": y[lowh].mean() / y.mean()}
+if not rows: print("pending")
+else:
+    SIM = pd.DataFrame(rows)[TG]; display(SIM.assign(median=SIM.median(1)))
+    bars(SIM.iloc[:5], "Similarity to the training actives against four outputs", "Spearman correlation with the Tanimoto to the nearest training active", order=list(SIM.index[:5][::-1]))'''),
  md("## Conclusions (computed from the tables above)\nEvery sentence is an f-string over the results; targets without results are listed as pending and no statement is made for them."),
  code('''if not len(DR): print("pending: no results yet")
 else:
@@ -145,6 +160,8 @@ else:
     dg = (-(LG.sub(FULL, axis=1))); dg["median"] = dg.median(1); print("(3) Loss in R2 when a group is removed from score + chemistry (median over targets): " + "; ".join(f"{i}: {v:.2f}" for i, v in dg["median"].sort_values(ascending=False).items()) + ".")
     for g in ["chemistry (all 12)", "ECFP4 bits (2048)", "chemistry + ECFP", "Tanimoto to training (both)", "other scores (all 5)"]:
         if g in R.index: print(f"(4) After the score, {g} still predicts the residual with R2 median {m(R.loc[g]):.2f} (range {rng(R.loc[g])}).")
+    if "SIM" in globals():
+        mm = SIM.median(1); print(f"(5) Similarity to the training actives against the fine-tuned score: median rho {mm['fine-tuned score']:.2f}; against the shift fine-tuning caused {mm['shift (head-FT minus No-FT logit)']:.2f}; against the rank gain of actives {mm['rank gain, actives']:.2f}; against the across-seed variance {mm['across-seed variance (logit)']:.2f}. Compounds in the top similarity decile are active {mm['active rate, top similarity decile / library rate']:.1f} times as often as the library average, the bottom half {mm['active rate, bottom half / library rate']:.2f} times. Similarity therefore acts on the mean prediction and hardly on the disagreement between seeds, consistent with all seeds sharing one training set.")
     print("Caveats: R2 is out-of-fold on one library per target, three folds, one model family; the seed variance is itself noisy (five seeds), which caps every R2; associations are not mechanisms.")'''),
 ]
 nb = nbf.v4.new_notebook(); nb.cells = cells
