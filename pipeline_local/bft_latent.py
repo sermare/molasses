@@ -188,3 +188,80 @@ def chemistry_table(t, arm="ft300s0", k=5):
         for j in range(k): row[f"PC{j + 1} (head-FT)"] = float(spearmanr(v[ok], pf[ok, j])[0])
         rows.append(row)
     return pd.DataFrame(rows)
+
+
+# =================================================================================================================== priority-1/2/5 analyses (added after the first notebook draft)
+def ecfp_matrix(smiles, n_bits=2048):
+    from rdkit import Chem, RDLogger, DataStructs
+    from rdkit.Chem import rdFingerprintGenerator
+    RDLogger.DisableLog("rdApp.*"); g = rdFingerprintGenerator.GetMorganGenerator(radius=2, fpSize=n_bits); X = np.zeros((len(smiles), n_bits), dtype=np.float32)
+    for i, s in enumerate(smiles):
+        m = Chem.MolFromSmiles(str(s))
+        if m is not None: X[i] = g.GetFingerprintAsNumPy(m)
+    return X
+
+
+def _fit_probe(Ftr, ytr, Fev, standardise=True):
+    from sklearn.linear_model import LogisticRegression
+    from sklearn.preprocessing import StandardScaler
+    from sklearn.model_selection import StratifiedKFold, cross_val_score
+    if standardise: sc = StandardScaler().fit(Ftr); Ftr, Fev = sc.transform(Ftr), sc.transform(Fev)
+    best, bestap = 0.01, -1
+    for C in (0.0003, 0.001, 0.01, 0.1, 1):
+        ap = cross_val_score(LogisticRegression(C=C, max_iter=3000, class_weight="balanced"), Ftr, ytr, cv=StratifiedKFold(5, shuffle=True, random_state=0), scoring="average_precision").mean()
+        if ap > bestap: best, bestap = C, ap
+    return LogisticRegression(C=best, max_iter=3000, class_weight="balanced").fit(Ftr, ytr).decision_function(Fev), best
+
+
+def information_table(t):
+    """Priority 1. The same linear probe, trained on the same 300 training compounds, on different inputs: ECFP4 bits, the No-FT 128-dim pooled features, the No-FT 384-dim post-MLP features,
+    ECFP + post-MLP, and the head-FT features. Evaluated on the evaluation sample (weighted, estimates the whole evaluation set). If the latent features are only a re-encoding of ligand chemistry
+    they will not beat ECFP."""
+    import bft_common as bc
+    D, G = aligned(t, ("noft", "ft300s0"), "g"); _, R = aligned(t, ("noft", "ft300s0"), "g_raw")
+    if "noft" not in G: return None
+    tr = D.is_train.values; ev = (~tr) & (D.w.values > 0); y = D.label.values; w = D.w.values; E = ecfp_matrix(D.smiles.values); rows = []
+    sets = {"ECFP4 bits": (E, False), "No-FT pooled features (128-dim)": (R["noft"], True), "No-FT post-MLP features (384-dim)": (G["noft"], True),
+            "ECFP4 + No-FT post-MLP": (np.hstack([E, G["noft"]]), True)}
+    if "ft300s0" in G: sets.update({"head-FT pooled features (128-dim)": (R["ft300s0"], True), "head-FT post-MLP features (384-dim)": (G["ft300s0"], True)})
+    for name, (F, std) in sets.items():
+        s, C = _fit_probe(F[tr], y[tr], F[ev], std); rows.append(dict(target=bc.SHORT[t], input=name, ap=wavg_precision(y[ev], s, w[ev]), auroc=wauc(y[ev], s, w[ev]), C=C))
+    for col, name in (("noft_p", "reference: No-FT probability"), ("ft_p", "reference: head-FT probability")):
+        rows.append(dict(target=bc.SHORT[t], input=name, ap=wavg_precision(y[ev], D[col].values[ev], w[ev]), auroc=wauc(y[ev], D[col].values[ev], w[ev]), C=np.nan))
+    rows.append(dict(target=bc.SHORT[t], input="reference: random", ap=float(np.average(y[ev], weights=w[ev])), auroc=0.5, C=np.nan))
+    return pd.DataFrame(rows)
+
+
+def seed_consistency(t):
+    """Priority 2. Do two independently seeded fine-tunings shift the features the same way? cosine between the two seeds' per-compound shifts, and the cosine of their mean shifts."""
+    import bft_common as bc
+    out = []
+    for kind in ("g_raw", "g"):
+        D, X = aligned(t, ("noft", "ft300s0", "ft300s1"), kind)
+        if len(X) < 3: return None
+        d0 = X["ft300s0"] - X["noft"]; d1 = X["ft300s1"] - X["noft"]; n0 = np.linalg.norm(d0, axis=1); n1 = np.linalg.norm(d1, axis=1)
+        cos = (d0 * d1).sum(1) / np.maximum(n0 * n1, 1e-9); m0, m1 = d0.mean(0), d1.mean(0)
+        out.append(dict(target=bc.SHORT[t], features="post-MLP (384)" if kind == "g" else "pooled (128)", mean_cosine_between_seeds=float(cos.mean()), cosine_of_mean_shifts=float(m0 @ m1 / (np.linalg.norm(m0) * np.linalg.norm(m1))),
+                        norm_correlation=float(spearmanr(n0, n1)[0]), relative_shift=float(n0.mean() / np.linalg.norm(X["noft"], axis=1).mean())))
+    return pd.DataFrame(out)
+
+
+def transfer_table(targets):
+    """Priority 5. The No-FT head is the same for every target, so its features live in one space. Train a probe on target A's 300 training compounds, score target B's evaluation sample:
+    weighted AP as a multiple of B's active rate (1 = no better than random)."""
+    import bft_common as bc
+    data = {}
+    for t in targets:
+        D, X = aligned(t, ("noft",))
+        if "noft" in X: data[t] = (D, X["noft"])
+    ap_m = pd.DataFrame(index=[bc.SHORT[t] for t in data], columns=[bc.SHORT[t] for t in data], dtype=float); auc_m = ap_m.copy()
+    for a, (Da, Fa) in data.items():
+        tr = Da.is_train.values; ya = Da.label.values
+        if ya[tr].sum() < 5: continue
+        from sklearn.preprocessing import StandardScaler
+        from sklearn.linear_model import LogisticRegression
+        sc = StandardScaler().fit(Fa[tr]); m = LogisticRegression(C=0.01, max_iter=3000, class_weight="balanced").fit(sc.transform(Fa[tr]), ya[tr])
+        for b, (Db, Fb) in data.items():
+            ev = (~Db.is_train.values) & (Db.w.values > 0); yb = Db.label.values; s = m.decision_function(sc.transform(Fb[ev])); rate = float(np.average(yb[ev], weights=Db.w.values[ev]))
+            ap_m.loc[bc.SHORT[a], bc.SHORT[b]] = wavg_precision(yb[ev], s, Db.w.values[ev]) / rate; auc_m.loc[bc.SHORT[a], bc.SHORT[b]] = wauc(yb[ev], s, Db.w.values[ev])
+    return ap_m, auc_m
