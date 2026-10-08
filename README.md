@@ -74,7 +74,14 @@ Notebooks: [05_pose_density_and_decoy](notebooks/05_pose_density_and_decoy.ipynb
 ### 9. No leakage between training and evaluation, but the gain shrinks when close analogs are removed
 - Training and evaluation compounds do not overlap, and near-duplicates are very rare.
 - The gain is mostly intact when only near-analogs are removed, but falls sharply when everything moderately similar to the training set is removed. The headline ratio therefore overstates what to expect for chemically unrelated compounds.
-- Checked by `pipeline_local/leakage_check.py`.
+
+| Evaluation compounds | head-FT / No-FT AP ratio (geometric mean over targets) |
+|---|---|
+| all | x2.04 |
+| not close to any training compound (Tanimoto < 0.6) | x1.76 |
+| clearly dissimilar (Tanimoto < 0.4) | x1.24 |
+
+Checked by `pipeline_local/leakage_check.py`.
 
 **Caveats that apply throughout:** two of eight targets are still in progress; the paper trained each condition once and we use five seeds; the binary label is the only ground truth; a few library compounds were never fully folded and are not scored. Pipeline notes: `docs/PIPELINE_NOTES.md`.
 
