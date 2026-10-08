@@ -9,58 +9,66 @@ High-level summary only; every number, per-target breakdown and caveat is in the
 ### 1. Head fine-tuning reproduces in direction on every finished target, with a smaller effect than the paper's
 - Average precision (AP) rises over the unadapted Boltz-2 on every finished target: about x2.0 on average at 300 labels (the paper: about x2.5 on the same targets).
 - The gain grows with the number of labels and is small or absent at 40 labels on several targets.
-- Notebooks: `01_replication`, `00_overview`, `06_training_strategies`.
 
 ![Replication](notebooks/figures/finding_1_replication.png)
+
+Notebooks: [01_replication](notebooks/01_replication.ipynb), [00_overview](notebooks/00_overview.ipynb), [06_training_strategies](notebooks/06_training_strategies.ipynb)
 
 ### 2. At the top 1% of the library, head-FT usually finds more actives
 - It finds more actives than No-FT on most targets, with fewer false positives; on one target it finds slightly fewer even though its AP rises.
 - At the default 0.5 probability threshold head-FT flags far fewer compounds: a calibration effect, not a worse ranking.
-- Notebook: `03_ft_vs_noft_reranking`.
 
 ![Top 1% confusion matrices](notebooks/figures/finding_2_top1pct.png)
+
+Notebook: [03_ft_vs_noft_reranking](notebooks/03_ft_vs_noft_reranking.ipynb)
 
 ### 3. The gain is concentrated in actives that resemble the training actives
 - Actives similar to the training actives are promoted strongly; dissimilar ones gain little or move down.
 - So head-FT behaves like generalisation to analogs of the labelled compounds, not like a model that learned binding in general. Correlational, and one target does not show it.
-- Notebook: `03_ft_vs_noft_reranking`.
 
 ![Similarity to the training actives](notebooks/figures/finding_3_similarity.png)
+
+Notebook: [03_ft_vs_noft_reranking](notebooks/03_ft_vs_noft_reranking.ipynb)
 
 ### 4. Head-FT does not separate near-identical molecules better than No-FT
 - For pairs of near-identical molecules with opposite labels, both models rank the active higher in roughly two thirds of pairs, and fine-tuning does not improve that. Most twins get nearly the same score.
 - Balanced training does not change this (one target, wide intervals).
-- Notebook: `04_structural_cliffs`.
 
 ![Near-identical pairs](notebooks/figures/finding_4_pairs.png)
 
+Notebook: [04_structural_cliffs](notebooks/04_structural_cliffs.ipynb)
+
 ### 5. The ranking is mostly driven by the ligand, not the protein (one target tested)
 - The same ligands scored against an unrelated protein rank almost as well as against the real one. Only the unadapted head was tested.
-- Notebook: `05_pose_density_and_decoy`.
 
 ![Decoy protein](notebooks/figures/finding_5_decoy.png)
+
+Notebook: [05_pose_density_and_decoy](notebooks/05_pose_density_and_decoy.ipynb)
 
 ### 6. Training-set selection (one target): balanced sets help a little, hard negatives hurt, 300 labels is enough
 - A half-active training set modestly beats the paper's top-N set; adding hard negatives hurts; more than 300 labels does not help further.
 - None of these comparisons survives correction for multiple testing, so they are suggestive.
-- Notebook: `06_training_strategies`.
 
 ![Training strategies](notebooks/figures/finding_6_strategies.png)
+
+Notebook: [06_training_strategies](notebooks/06_training_strategies.ipynb)
 
 ### 7. Seeds agree on ranking quality; the disagreement between seeds is partly predictable but is not a useful screening filter
 - Seed-to-seed spread in AP is small, and averaging the five seeds helps a little. No uncertainty measure tested (seed spread, head disagreement, pose confidence, similarity to the training set) is a reliable filter for picking compounds.
 - What predicts which compounds the seeds disagree on (cross-validated, left to right in the figure): higher-scoring compounds have less disagreement on the logit scale; the score explains about a third of it, molecular size and a fingerprint of substructures each explain about as much again and partly add to the score, and together they reach about half. Similarity to the training set and the other docking-type scores explain almost nothing.
 - Caveat: the cross-validation splits compounds at random, not by scaffold, so the fingerprint result may be optimistic.
-- Notebooks: `02_uncertainty`, `09_seed_variance`.
 
 ![Seed disagreement](notebooks/figures/finding_7_seeds.png)
+
+Notebooks: [02_uncertainty](notebooks/02_uncertainty.ipynb), [09_seed_variance](notebooks/09_seed_variance.ipynb)
 
 ### 8. Poses concentrate in one confidently predicted pocket
 - A few residues take almost all contacts; they are confidently predicted, and low-confidence residues are mostly at chain ends, away from the poses.
 - No-FT and head-FT use the same poses, so both point at the same pocket; they differ in which compounds they rank first.
-- Notebooks: `05_pose_density_and_decoy`, `07_structure_confidence`.
 
 ![Localisation of poses and confidence](notebooks/figures/finding_8_localization.png)
+
+Notebooks: [05_pose_density_and_decoy](notebooks/05_pose_density_and_decoy.ipynb), [07_structure_confidence](notebooks/07_structure_confidence.ipynb)
 
 ### 9. No leakage between training and evaluation, but the gain shrinks when close analogs are removed
 - Training and evaluation compounds do not overlap, and near-duplicates are very rare.
