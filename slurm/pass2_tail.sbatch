@@ -17,7 +17,7 @@ set -eo pipefail
 TARGET="${TARGET:?set TARGET}"
 source /clusterfs/nilah/sergio/miniconda3/etc/profile.d/conda.sh; conda activate boltzft
 source /global/scratch/users/sergiomar10/boltzaff/env.sh "$TARGET"
-M=$(printf "%03d" $((SLURM_ARRAY_TASK_ID-1)))
+M=$(printf "%03d" $((SLURM_ARRAY_TASK_ID-1+${IDX_OFFSET:-0})))   # IDX_OFFSET lets mini numbers pass the cluster array limit (index <= 1000)
 MINI=$R/p2_tail; export KERNELS=1
 bash "$BOLTZFT/pipeline/build_affinity_cache.sh" "$TARGET" "$MINI/inputs/mini_$M" "$MINI/outputs/mini_$M" || { echo "[p2tail] build step failed on $(hostname)"; if [ "${SLURM_RESTART_COUNT:-0}" -lt 8 ]; then scontrol requeue "$SLURM_JOB_ID"; exit 0; else exit 1; fi; }
 set +e

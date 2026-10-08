@@ -1,5 +1,5 @@
 #!/bin/bash
-# Extract the affinity head's internal features for the latent-space analysis. Array task 1..3 = arm noft, ft300s0, ft300s1 (see pipeline_local/extract_latent.py).
+# Extract the affinity head's internal features for the latent-space analysis. Array task 1..4 = arm noft, ft300s0, ft300s1, ft300s2 (see pipeline_local/extract_latent.py).
 # Submit: sbatch --job-name=lat_<id> --export=ALL,TARGET=434954-2097 --array=1-3 slurm/extract_latent.sbatch
 #SBATCH --account=co_nilah
 #SBATCH --partition=savio3_gpu
@@ -15,5 +15,5 @@ set -eo pipefail
 TARGET="${TARGET:?set TARGET}"
 source /clusterfs/nilah/sergio/miniconda3/etc/profile.d/conda.sh; conda activate boltzft
 source /global/scratch/users/sergiomar10/boltzaff/env.sh "$TARGET"
-ARMS=(noft ft300s0 ft300s1); ARM=${ARMS[$((SLURM_ARRAY_TASK_ID-1))]}
+ARMS=(noft ft300s0 ft300s1 ft300s2); ARM=${ARMS[$((SLURM_ARRAY_TASK_ID-1))]}
 python -u /global/scratch/users/sergiomar10/boltzaff/pipeline_local/extract_latent.py --target "$TARGET" --arm "$ARM" ${LIMIT:+--limit $LIMIT}

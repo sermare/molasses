@@ -150,14 +150,8 @@ for i, (r, p) in enumerate(zip(V.ratio_vs_top, V.paired_p)): ax.text(r + 0.02, i
 ax.set_xlim(0, 1.7); ax.set_xlabel("AP relative to the standard top-N training set (5 seeds, paired; 1 = no change)"); ax.set_title("588689: training-set composition. Coloured: p < 0.05 uncorrected;\nnone passes Bonferroni (0.0056 for 9 comparisons)", fontsize=10)
 save(fig, "finding_6_strategies.png")
 
-# 7. seeds and ensembling: single-seed AP vs 5-seed ensemble AP at N=300 (y axis from 0)
-fig, ax = plt.subplots(figsize=(6.5, 4.4))
-for j, t in enumerate(DONE):
-    S = bc.scores(t); single = [bc.average_precision(S.label, S[f"ft300_p{s}"]) for s in bc.SEEDS]; ens = bc.average_precision(S.label, bc.ft_mean(S, 300))
-    ax.scatter(np.full(5, j) + np.linspace(-0.12, 0.12, 5), single, color=OUR, s=22, label="single seeds" if j == 0 else None); ax.hlines(ens, j - 0.25, j + 0.25, color=BLK, lw=2, label="5-seed ensemble" if j == 0 else None)
-    ax.text(j + 0.27, ens, f"+{100 * (ens / np.mean(single) - 1):.0f}% vs mean seed", va="center", fontsize=8)
-ax.set_ylim(0, 0.27); ax.set_xticks(range(len(DONE))); ax.set_xticklabels([SH[t] for t in DONE]); ax.set_xlim(-0.6, len(DONE) - 0.1); ax.set_ylabel("average precision (N=300)"); ax.legend(fontsize=8, loc="lower right"); ax.set_title("Seed-to-seed spread and the gain from ensembling")
-save(fig, "finding_7_seeds.png")
+# 7. seed disagreement and what predicts it (written by make_variance_figure.py from results/analysis/<target>/variance_*.csv)
+import subprocess; subprocess.run([sys.executable, str(bc.ROOT / "pipeline_local/make_variance_figure.py")], check=True)
 
 # 8. localisation: Boltz-2 structures of the finished targets, coloured by pLDDT and by pose density (stitched from the PyMOL renders)
 import matplotlib.image as mpimg

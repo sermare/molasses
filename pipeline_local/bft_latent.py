@@ -1,6 +1,6 @@
 """Helpers for notebooks/08_latent_space_and_baselines.ipynb: the compound sample used for latent-space extraction, loading of extracted features, and the analyses.
-Sampling per target (results/analysis/<t>/latent/sample.csv): the 300 training compounds, ALL evaluation actives, a random set of evaluation inactives (default 2,500),
-and the top-1% picks of No-FT and of the 5-seed head-FT ensemble (N=300), so that true and false positives are all present.
+Sampling per target (results/analysis/<t>/latent/sample.csv): the 300 training compounds, ALL evaluation actives, a random set of evaluation inactives (default 1,000),
+and the top-300 picks of No-FT and of the 5-seed head-FT ensemble (N=300), so that true and false positives are all present.
 `w` makes the random part an unbiased estimate of the whole evaluation set: actives weight 1, randomly drawn inactives weight n_inactives / n_drawn, extra inactives that
 are in only because they are top picks weight 0 (use them for qualitative views, never for estimating AP)."""
 import numpy as np, pandas as pd
@@ -14,7 +14,7 @@ def sample_path(t):
     return bc.AN / t / "latent" / "sample.csv"
 
 
-def make_sample(t, n_random=2500, seed=0, force=False):
+def make_sample(t, n_random=1000, n_picks=300, seed=0, force=False):
     import bft_common as bc
     p = sample_path(t)
     if p.exists() and not force: return pd.read_csv(p)
@@ -25,7 +25,7 @@ def make_sample(t, n_random=2500, seed=0, force=False):
     tr = pd.DataFrame({"id": tr_ids, "label": ml.is_binder.reindex(tr_ids).astype(int).values, "smiles": ml.smiles.reindex(tr_ids).values})
     tr["is_train"] = True; tr["noft_p"] = ml.affinity_probability_binary.reindex(tr_ids).values; tr["ft_p"] = np.nan
     ev = S[["id", "label", "smiles", "noft_p"]].copy(); ev["ft_p"] = bc.ft_mean(S, 300).values; ev["is_train"] = False
-    k = int(np.ceil(0.01 * len(ev))); ev["pick_noft"] = False; ev["pick_ft"] = False
+    k = int(n_picks); ev["pick_noft"] = False; ev["pick_ft"] = False
     ev.loc[ev.noft_p.nlargest(k).index, "pick_noft"] = True; ev.loc[ev.ft_p.nlargest(k).index, "pick_ft"] = True
     act = ev[ev.label == 1]; ina = ev[ev.label == 0]; rnd = ina.sample(n=min(n_random, len(ina)), random_state=seed)
     ev["random_inactive"] = ev.index.isin(rnd.index)
@@ -41,6 +41,7 @@ def load_latent(t, arm):
     """arrays of one arm: ids, g (n, 2, 384) post-MLP features, g_raw (n, 2, 128), value (n, 2), logit (n, 2); None if the arm is not extracted yet."""
     import bft_common as bc
     f = bc.AN / t / "latent" / f"{arm}.npz"
+    if not f.exists(): merge_shards(t)
     if not f.exists(): return None
     z = np.load(f, allow_pickle=True); return {k: z[k] for k in z.files}
 
@@ -49,7 +50,7 @@ def load_latent(t, arm):
 from scipy.stats import rankdata, spearmanr
 
 
-def aligned(t, arms=("noft", "ft300s0", "ft300s1"), kind="g", module="mean"):
+def aligned(t, arms=("noft", "ft300s0", "ft300s1", "ft300s2"), kind="g", module="mean"):
     """(sample DataFrame, {arm: (n, d) array aligned to the sample rows}); arms that are not extracted yet are skipped. module: 'mean' of the two ensemble modules, or 0 / 1."""
     D = make_sample(t); out = {}
     for arm in arms:
@@ -265,3 +266,18 @@ def transfer_table(targets):
             ev = (~Db.is_train.values) & (Db.w.values > 0); yb = Db.label.values; s = m.decision_function(sc.transform(Fb[ev])); rate = float(np.average(yb[ev], weights=Db.w.values[ev]))
             ap_m.loc[bc.SHORT[a], bc.SHORT[b]] = wavg_precision(yb[ev], s, Db.w.values[ev]) / rate; auc_m.loc[bc.SHORT[a], bc.SHORT[b]] = wauc(yb[ev], s, Db.w.values[ev])
     return ap_m, auc_m
+
+
+def merge_shards(t, force=False):
+    """Combine results/analysis/<t>/latent/shards/shard_*.npz (written by extract_latent_multi.py in short-job mode) into <arm>.npz in the order of sample.csv. Returns True when all arms exist."""
+    import json, bft_common as bc
+    L = bc.AN / t / "latent"; arms = ("noft", "ft300s0", "ft300s1", "ft300s2")
+    if not force and all((L / f"{a}.npz").exists() for a in arms): return True
+    man = L / "shards" / "manifest.json"
+    if not man.exists(): return False
+    n = json.loads(man.read_text())["nshards"]; files = [L / "shards" / f"shard_{k:03d}.npz" for k in range(n)]
+    if not all(f.exists() for f in files): return False
+    Z = [np.load(f, allow_pickle=True) for f in files]; ids = np.concatenate([z["ids"] for z in Z]).astype(str)
+    for arm in arms:
+        np.savez_compressed(L / f"{arm}.npz", ids=ids, **{k: np.concatenate([z[f"{arm}__{k}"] for z in Z]) for k in ("g", "g_raw", "value", "logit")})
+    return True

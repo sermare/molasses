@@ -36,5 +36,6 @@ for k in sorted(by_chunk):
 with open(tsv, "a") as f: f.write("\n".join(rows) + ("\n" if rows else ""))
 print(f"{len(have_pre):,} folded compounds with pre_affinity; {len(todo):,} need Pass-2 and are now in minis {n0 + 1}..{idx} ({idx - n0} jobs of up to {a.size})")
 if a.submit and idx > n0:
-    cmd = ["sbatch", f"--nice={a.nice}", f"--job-name=p2m_{TAG}", f"--export=ALL,TARGET={a.target}", f"--array={n0 + 1}-{idx}%{a.conc}", str(ROOT / "slurm/pass2_tail.sbatch")]
+    off = n0 if idx > 1000 else 0                      # the cluster's array indices stop at 1000: count from 1 and let the job script add the offset
+    cmd = ["sbatch", f"--nice={a.nice}", f"--job-name=p2m_{TAG}", f"--export=ALL,TARGET={a.target},IDX_OFFSET={off}", f"--array={n0 + 1 - off}-{idx - off}%{a.conc}", str(ROOT / "slurm/pass2_tail.sbatch")]
     print(subprocess.run(cmd, capture_output=True, text=True, cwd=ROOT).stdout.strip())
