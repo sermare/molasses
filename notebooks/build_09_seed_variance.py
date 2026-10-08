@@ -19,7 +19,7 @@ SH = bc.SHORT; BLK = bc.BLK; COL = ["#2a78d6", "#eb6834", "#1baf7a", "#8e44ad", 
 def load(name):
     fs = [(t, bc.AN / t / name) for t in bc.TARGETS if (bc.AN / t / name).exists()]
     return pd.concat([pd.read_csv(f, dtype={"target": str}) for _, f in fs], ignore_index=True) if fs else pd.DataFrame()
-DR, PDP, SDD, EB = load("variance_drivers.csv"), load("variance_pdp.csv"), load("variance_score_deciles.csv"), load("variance_ecfp_bits.csv")
+DR, PDP, SDD, EB = load("variance_drivers.csv"), load("variance_pdp.csv"), load("variance_score_deciles.csv"), load("variance_ecfp_bits.csv"); DRS = load("variance_drivers_scaffold.csv")
 TG = sorted(DR.target.unique(), key=lambda s: [SH[t] for t in bc.TARGETS].index(s)) if len(DR) else []
 missing = [SH[t] for t in bc.TARGETS if SH[t] not in TG]
 print("targets analysed:", TG, "| pending (no result file yet):", missing)
@@ -145,6 +145,21 @@ if not rows: print("pending")
 else:
     SIM = pd.DataFrame(rows)[TG]; display(SIM.assign(median=SIM.median(1)))
     bars(SIM.iloc[:5], "Similarity to the training actives against four outputs", "Spearman correlation with the Tanimoto to the nearest training active", order=list(SIM.index[:5][::-1]))'''),
+ md("## 8. Does it survive a split by scaffold?\nSections 2 to 6 use a random 3-fold split of the compounds, so a chemical series can sit on both sides of the split and a model can exploit it (most worrying for the fingerprint). Here the same analyses are repeated with folds grouped by generic Murcko scaffold: every compound of a scaffold is in the same fold, so the model is always tested on scaffolds it has not seen. "
+    "Left bars: random split; right bars: scaffold split; dots: individual targets (scaffold split)."),
+ code('''if not len(DRS): print("pending: run pipeline_local/variance_drivers.py <target> --scaffold")
+else:
+    pairs = [("alone", "score (all three)", "score"), ("alone", "chemistry (all 12)", "chemistry"), ("alone", "ECFP4 bits (2048)", "fingerprint bits"), ("alone", "other scores (all 5)", "other scores"), ("alone", "Tanimoto to training (both)", "similarity to training"),
+             ("score + chemistry: nothing removed", "-", "score + chemistry"), ("on the residual of the score", "chemistry (all 12)", "after the score: chemistry"), ("on the residual of the score", "ECFP4 bits (2048)", "after the score: fingerprint bits"), ("on the residual of the score", "chemistry + ECFP", "after the score: chemistry + fingerprint")]
+    TGS = sorted(DRS.target.unique(), key=lambda x: [SH[t] for t in bc.TARGETS].index(x)); tabR, tabS = {}, {}
+    for a, f, n in pairs:
+        r = DR[(DR.analysis == a) & (DR.feature == f)].set_index("target").R2; q = DRS[(DRS.analysis == a) & (DRS.feature == f)].set_index("target").R2; tabR[n] = r.reindex(TGS); tabS[n] = q.reindex(TGS)
+    TR, TS = pd.DataFrame(tabR).T, pd.DataFrame(tabS).T
+    fig, ax = plt.subplots(figsize=(10, 5)); y = np.arange(len(TR))[::-1]
+    ax.barh(y + .2, TR.median(1), height=.38, color="#c9d8f0", edgecolor=BLK, linewidth=.5, label="random split (median)"); ax.barh(y - .2, TS.median(1), height=.38, color="#f4c9b3", edgecolor=BLK, linewidth=.5, label="scaffold split (median)")
+    for k, t in enumerate(TGS): ax.scatter(TS[t], y - .2, s=14, color=COL[k % 6], zorder=3, label=t)
+    ax.set_yticks(y); ax.set_yticklabels(TR.index); ax.set_xlim(0, None); ax.set_xlabel("cross-validated R2 for the across-seed variance"); ax.legend(fontsize=7, loc="lower right"); plt.tight_layout(); plt.show()
+    cmp = pd.DataFrame({"random split": TR.median(1), "scaffold split": TS.median(1)}); cmp["change"] = cmp["scaffold split"] - cmp["random split"]; display(cmp); display(TS.assign(median=TS.median(1)))'''),
  md("## Conclusions (computed from the tables above)\nEvery sentence is an f-string over the results; targets without results are listed as pending and no statement is made for them."),
  code('''if not len(DR): print("pending: no results yet")
 else:
@@ -162,7 +177,9 @@ else:
         if g in R.index: print(f"(4) After the score, {g} still predicts the residual with R2 median {m(R.loc[g]):.2f} (range {rng(R.loc[g])}).")
     if "SIM" in globals():
         mm = SIM.median(1); print(f"(5) Similarity to the training actives against the fine-tuned score: median rho {mm['fine-tuned score']:.2f}; against the shift fine-tuning caused {mm['shift (head-FT minus No-FT logit)']:.2f}; against the rank gain of actives {mm['rank gain, actives']:.2f}; against the across-seed variance {mm['across-seed variance (logit)']:.2f}. Compounds in the top similarity decile are active {mm['active rate, top similarity decile / library rate']:.1f} times as often as the library average, the bottom half {mm['active rate, bottom half / library rate']:.2f} times. Similarity therefore acts on the mean prediction and hardly on the disagreement between seeds, consistent with all seeds sharing one training set.")
-    print("Caveats: R2 is out-of-fold on one library per target, three folds, one model family; the seed variance is itself noisy (five seeds), which caps every R2; associations are not mechanisms.")'''),
+    if len(DRS) and "cmp" in globals():
+        print("(6) Scaffold-grouped split, median R2 against the random split: " + "; ".join(f"{i}: {r.iloc[1]:.2f} against {r.iloc[0]:.2f}" for i, r in cmp.iterrows()) + ".")
+    print("Caveats: R2 is out-of-fold on one library per target, three folds, one model family (section 8 repeats it with scaffold-grouped folds); the seed variance is itself noisy (five seeds), which caps every R2; associations are not mechanisms.")'''),
 ]
 nb = nbf.v4.new_notebook(); nb.cells = cells
 nb.metadata = {"kernelspec": {"name": "boltzba", "display_name": "Python (boltzba)", "language": "python"}, "language_info": {"name": "python"}}

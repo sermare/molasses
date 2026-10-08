@@ -5,13 +5,14 @@ Outcome y = rank (0-1) of the across-seed variance of the head-FT LOGIT, over th
 dominated by the sigmoid (a probability near 0 cannot move much). Models: LightGBM, 3-fold cross-validated R^2 (and AUC for 'top quartile of variance').
 Feature groups: score (mean head-FT logit, No-FT logit, their difference), chemistry (10 RDKit properties + Brenk / NIH flags; formal charge is constant in these libraries and dropped),
 Tanimoto to the training set, other scores (Boltz-2 dataset, Boltzina, docking, GNINA, Vina), ECFP4 bits.
+With --scaffold the cross-validation is grouped by generic Murcko scaffold (variance_drivers_scaffold.csv).
 Writes results/analysis/<target>/variance_drivers.csv (long table: analysis, feature, R2, AUC), variance_pdp.csv (variance rank by decile of each property / of the score),
 variance_ecfp_bits.csv (most useful ECFP bits for what the score does not explain)."""
 import sys
 from pathlib import Path
 import numpy as np, pandas as pd, lightgbm as lgb
 from scipy.stats import rankdata
-from sklearn.model_selection import KFold
+from sklearn.model_selection import KFold, GroupKFold
 from sklearn.metrics import roc_auc_score
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import bft_common as bc, bft_signals as sg, bft_latent as lat
@@ -24,18 +25,23 @@ OTHER = ["score_boltz2", "score_boltzina", "docking_score_boltzina", "score_gnin
 lg = lambda p: np.log(np.clip(p, 1e-6, 1 - 1e-6) / (1 - np.clip(p, 1e-6, 1 - 1e-6)))
 
 
+GROUPS_ARRAY = None      # set by run(scaffold=True): generic Murcko scaffold id per compound, so no scaffold is split between training and test folds
+
+
 def cv(X, y, jobs=2, seed=0):
-    """3-fold CV: returns (R2, AUC of top quartile, out-of-fold prediction)."""
-    pr = np.zeros(len(y))
-    for a, b in KFold(3, shuffle=True, random_state=seed).split(X):
+    """3-fold CV (random, or grouped by scaffold when GROUPS_ARRAY is set): returns (R2, AUC of top quartile, out-of-fold prediction)."""
+    pr = np.zeros(len(y)); splits = GroupKFold(3).split(X, y, GROUPS_ARRAY) if GROUPS_ARRAY is not None else KFold(3, shuffle=True, random_state=seed).split(X)
+    for a, b in splits:
         pr[b] = lgb.LGBMRegressor(n_estimators=200, learning_rate=0.05, num_leaves=31, min_child_samples=50, subsample=0.8, subsample_freq=1, colsample_bytree=0.8, verbose=-1, n_jobs=jobs).fit(X[a], y[a]).predict(X[b])
     return 1 - ((y - pr) ** 2).sum() / ((y - y.mean()) ** 2).sum(), roc_auc_score(y > np.quantile(y, .75), pr), pr
 
 
-def run(t):
+def run(t, scaffold=False):
+    global GROUPS_ARRAY
     S = bc.scores(t)
     if S is None or S[[f"ft300_p{s}" for s in range(5)]].isna().any().any(): return None
     S = S.set_index("id"); P = lg(S[[f"ft300_p{s}" for s in range(5)]].values); y = rankdata(P.var(1)) / len(S); n = len(S)
+    GROUPS_ARRAY = pd.factorize(pd.read_csv(bc.AN / t / "signals_scaffolds.csv").set_index("id").reindex(S.index).generic.fillna("none"))[0] if scaffold else None
     ph = sg.physchem(t).set_index("id").reindex(S.index); fl = sg.filter_flags(t).set_index("id").reindex(S.index)
     tc = pd.read_csv(bc.AN / t / "tc_train.csv").set_index("Unnamed: 0").reindex(S.index)
     F = pd.DataFrame({"FT logit": P.mean(1), "No-FT logit": lg(S.noft_p.values)}, index=S.index); F["shift (No-FT - FT)"] = F["No-FT logit"] - F["FT logit"]
@@ -70,7 +76,9 @@ def run(t):
     E = lat.ecfp_matrix(S.smiles.values).astype(np.float32); add("on the residual of the score", "ECFP4 bits (2048)", E, res)
     add("on the residual of the score", "chemistry + ECFP", np.hstack([F[chem_cols].values, E]), res)
     add("alone", "ECFP4 bits (2048)", E); add("score + one chemistry group", "ECFP4 bits (2048)", np.hstack([F[SCORE].values, E]))
-    out = bc.AN / t; pd.DataFrame(rows).to_csv(out / "variance_drivers.csv", index=False)
+    out = bc.AN / t
+    if scaffold: pd.DataFrame(rows).to_csv(out / "variance_drivers_scaffold.csv", index=False); return True
+    pd.DataFrame(rows).to_csv(out / "variance_drivers.csv", index=False)
     # direction: variance rank (raw and after the score) by decile of each property and of the score
     pdp = []
     for c in SCORE[:2] + chem_cols + ["Tanimoto to training (all)"]:
@@ -101,4 +109,5 @@ def ecfp_alone(t):
 if __name__ == "__main__":
     t = sys.argv[1]
     if len(sys.argv) > 2 and sys.argv[2] == "--ecfp-alone": ecfp_alone(t)
+    elif len(sys.argv) > 2 and sys.argv[2] == "--scaffold": r = run(t, scaffold=True); print("done" if r else "no data", t)
     else: r = run(t); print("done" if r else "no data", t)

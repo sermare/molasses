@@ -57,7 +57,7 @@ Notebook: [06_training_strategies](notebooks/06_training_strategies.ipynb)
 - Seed-to-seed spread in AP is small, and averaging the five seeds helps a little. No uncertainty measure tested (seed spread, head disagreement, pose confidence, similarity to the training set) is a reliable filter for picking compounds.
 - What predicts which compounds the seeds disagree on (cross-validated, left to right in the figure): higher-scoring compounds have less disagreement on the logit scale; the score explains about a third of it, molecular size and a fingerprint of substructures each explain about as much again and partly add to the score, and together they reach about half. Similarity to the training set and the other docking-type scores explain almost nothing.
 - Similarity to the training actives shapes what the models predict (higher score, bigger shift from fine-tuning, larger rank gain for actives) but hardly how much the seeds disagree: all seeds share one training set, so the shift is the same in each of them.
-- Caveat: the cross-validation splits compounds at random, not by scaffold, so the fingerprint result may be optimistic.
+- The result is the same when the cross-validation is split by chemical scaffold (every number within 0.02), so it is not driven by series that straddle training and test.
 
 ![Seed disagreement](notebooks/figures/finding_7_seeds.png)
 
