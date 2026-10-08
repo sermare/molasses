@@ -52,9 +52,9 @@ def queue():
     q = {}
     for line in out.splitlines():
         name, state, reason = line.split("|")
-        m = re.match(r"^(p1|p2|base|ft)_(.+)$", name)
+        m = re.match(r"^(p1m?|p2|base|ft)_(.+)$", name)
         if not m: continue
-        k = (m.group(1), m.group(2)); q.setdefault(k, [0, 0, 0])
+        k = (m.group(1).rstrip("m") if m.group(1) == "p1m" else m.group(1), m.group(2)); q.setdefault(k, [0, 0, 0])
         if state == "RUNNING": q[k][0] += 1
         elif "Held" in reason: q[k][2] += 1          # held by the user (paused on purpose)
         else: q[k][1] += 1

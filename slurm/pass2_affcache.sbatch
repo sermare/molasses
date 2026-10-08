@@ -9,8 +9,9 @@
 #SBATCH --nodes=1
 #SBATCH --cpus-per-task=4
 #SBATCH --gres=gpu:1
-#SBATCH --exclude=n0143.savio3,n0144.savio3,n0215.savio3,n0176.savio3
+#SBATCH --exclude=n0143.savio3,n0144.savio3,n0215.savio3,n0176.savio3,n0214.savio3
 #SBATCH --time=04:00:00
+#SBATCH --constraint=a40|8rtx      # A40 (48 GB) and TITAN nodes only: the 11 GB GTX 2080 Ti nodes (4rtx) run out of GPU memory while boltz still exits 0
 #SBATCH --job-name=bft_p2
 #SBATCH --output=/global/scratch/users/sergiomar10/boltzaff/slurm/logs/p2_%A_%a.out
 #SBATCH --error=/global/scratch/users/sergiomar10/boltzaff/slurm/logs/p2_%A_%a.err
