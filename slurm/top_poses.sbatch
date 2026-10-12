@@ -6,7 +6,7 @@
 #SBATCH --nodes=1
 #SBATCH --cpus-per-task=4
 #SBATCH --gres=gpu:1
-#SBATCH --exclude=n0143.savio3,n0144.savio3
+#SBATCH --exclude=n0143.savio3,n0144.savio3,n0175.savio3,n0214.savio3
 #SBATCH --time=01:30:00
 #SBATCH --job-name=bft_pose
 #SBATCH --output=/global/scratch/users/sergiomar10/boltzaff/slurm/logs/pose_%j.out
